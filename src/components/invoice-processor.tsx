@@ -104,6 +104,7 @@ export default function InvoiceProcessor() {
   const [selectedUnmappedId, setSelectedUnmappedId] = useState<string | null>(null);
   const [isSavingSession, setIsSavingSession] = useState(false);
   const [processedFileNames, setProcessedFileNames] = useState<string[]>([]);
+  const [uploadedXmls, setUploadedXmls] = useState<Record<string, string>>({});
   
   // State for duplicate invoice handling
   const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
@@ -531,10 +532,12 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
     setAlreadyMappedItems(new Map());
     setUnmappedSuppliers(new Map());
     setProcessedFileNames([]);
+    setUploadedXmls({});
 
     const allItems: ParsedInvoiceItem[] = [];
     const finalFileNames: string[] = [];
     const errors: string[] = [];
+    const newUploadedXmls: Record<string, string> = {};
 
     for (const file of files) {
       try {
@@ -569,6 +572,7 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
           
           if (invoiceFile) {
             const content = await invoiceFile.async('string');
+            newUploadedXmls[file.name] = content;
             // Use the zip file name for identification
             const items = await processXmlFile(content, file.name);
             allItems.push(...items);
@@ -578,6 +582,7 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
         } else if (file.name.toLowerCase().endsWith('.xml')) {
           finalFileNames.push(file.name);
           const content = await file.text();
+          newUploadedXmls[file.name] = content;
           const items = await processXmlFile(content, file.name);
           allItems.push(...items);
         }
@@ -604,8 +609,30 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
     
     setInvoiceData(sortedData);
     setProcessedFileNames(finalFileNames);
+    setUploadedXmls(newUploadedXmls);
     setIsProcessingFiles(false);
   };
+
+  const handleDownloadXml = useCallback((fileName: string) => {
+    const content = uploadedXmls[fileName];
+    if (!content) {
+      toast({
+        variant: 'destructive',
+        title: 'Lỗi',
+        description: `Không tìm thấy dữ liệu gốc của tệp ${fileName}`,
+      });
+      return;
+    }
+    const blob = new Blob([content], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName.endsWith('.xml') ? fileName : `${fileName}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [uploadedXmls, toast]);
 
 
    const handleMappingFileSelect = (files: File[]) => {
@@ -1733,7 +1760,7 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <InvoiceTable data={warningData} searchTerm={warningDataSearch} />
+                <InvoiceTable data={warningData} searchTerm={warningDataSearch} showFileName={true} onDownloadXml={handleDownloadXml} />
               </CardContent>
             </Card>
           </TabsContent>

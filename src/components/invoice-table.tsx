@@ -15,10 +15,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
+import { Download } from 'lucide-react';
+
 interface InvoiceTableProps {
   data: InvoiceItem[];
   searchTerm?: string;
   itemsPerPage?: number;
+  showFileName?: boolean;
+  onDownloadXml?: (fileName: string) => void;
 }
 
 const formatNumber = (num: number | string) => {
@@ -28,7 +32,7 @@ const formatNumber = (num: number | string) => {
   return num;
 };
 
-export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50 }: InvoiceTableProps) {
+export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50, showFileName = false, onDownloadXml }: InvoiceTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
 
   const filteredData = useMemo(() => {
@@ -57,6 +61,9 @@ export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50 }: Invoi
   if (hasMappedData) {
     headers.unshift('Mã hàng (gốc)');
   }
+  if (showFileName) {
+    headers.push('Tên file');
+  }
   
   if (paginatedData.length === 0) {
     return <div className="text-center text-muted-foreground p-8">Không có dữ liệu để hiển thị.</div>
@@ -66,13 +73,14 @@ export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50 }: Invoi
     switch (header) {
       case 'Mã hàng (gốc)': return 'w-[12%]';
       case 'Mã hàng': return 'w-[12%]';
-      case 'Tên hàng hóa': return 'w-[25%]';
+      case 'Tên hàng hóa': return showFileName ? 'w-[20%]' : 'w-[25%]';
       case 'ĐVT': return 'w-[8%]';
       case 'Số lượng': return 'w-[8%] text-right';
       case 'Đơn giá': return 'w-[10%] text-right';
       case 'Thành tiền': return 'w-[12%] text-right';
       case 'Số lô': return 'w-[13%]';
       case 'Hạn dùng': return 'w-[12%]';
+      case 'Tên file': return 'w-[15%]';
       default: return 'w-auto';
     }
   };
@@ -108,7 +116,22 @@ export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50 }: Invoi
               <TableRow key={`${item['Số hóa đơn']}-${item['Mã hàng']}-${index}`}>
                 {headers.map(header => (
                   <TableCell key={header as string} className={`break-words ${getCellClass(header as string)}`}>
-                    {header === 'Tên hàng hóa' && !item[header] ? (
+                    {header === 'Tên file' ? (
+                      <div className="flex items-center gap-2 justify-between">
+                        <span className="truncate max-w-[120px]" title={item['Tên file']}>{item['Tên file']}</span>
+                        {onDownloadXml && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-primary hover:text-primary/80"
+                            onClick={() => onDownloadXml(item['Tên file'])}
+                            title="Tải tệp XML gốc"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    ) : header === 'Tên hàng hóa' && !item[header] ? (
                       <div className="flex items-center gap-2">
                          <Badge variant="outline">Chưa có</Badge>
                       </div>

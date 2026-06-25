@@ -219,7 +219,7 @@ function extractFromItemName(tenHang: string): { name: string, solo: string, hsd
         cleanedName = cleanedName.replace(lsxRegex, '').trim();
     }
 
-    const vnPharmaRegex = /(?:Số lô|So lo|Số lo|So lô|Lô):\s*([^;,\s]+)\s*(?:Hạn dùng|Han dùng|Han dung|HSD|HSD:|EXP|HD):\s*([^;,\s\)]+)/i;
+    const vnPharmaRegex = /(?:Số lô|So lo|Số lo|So lô|Lô):\s*([^;,\s]+)[\s,;\-–]*(?:Hạn dùng|Han dùng|Han dung|HSD|HSD:|EXP|HD):\s*([^;,\s\)]+)/i;
     const m2 = cleanedName.match(vnPharmaRegex);
     if (m2) {
         if (!solo) solo = m2[1].trim();
@@ -234,6 +234,11 @@ function extractFromItemName(tenHang: string): { name: string, solo: string, hsd
         if (!hsdd) hsdd = m3[2].trim();
         cleanedName = cleanedName.replace(dmcRegex, '').trim();
     }
+
+    cleanedName = cleanedName
+        .replace(/^[,\s;.\-+–]+|[,\s;.\-+–]+$/g, '')
+        .replace(/\(\s*\)/g, '')
+        .trim();
 
     return { name: cleanedName, solo, hsdd };
 }

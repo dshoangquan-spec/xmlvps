@@ -1,0 +1,1720 @@
+
+
+'use client';
+
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { collection, doc, setDoc, deleteDoc, writeBatch, getDocs, where, query, updateDoc, addDoc, getDoc, serverTimestamp, increment, orderBy, collectionGroup } from 'firebase/firestore';
+import Link from 'next/link';
+import { read, utils, WorkBook } from 'xlsx';
+import { format, parse, isValid } from 'date-fns';
+import JSZip from 'jszip';
+
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { FileUploader } from '@/components/file-uploader';
+import { InvoiceTable } from '@/components/invoice-table';
+import { ManualMappingTable } from '@/components/manual-mapping-table';
+import { UnmappedSupplierTable } from '@/components/unmapped-supplier-table';
+import { MappingCatalogDialog } from '@/components/mapping-catalog-dialog';
+import { SupplierCatalogDialog } from '@/components/supplier-catalog-dialog';
+import { InvoiceSummary } from '@/components/invoice-summary';
+import { AlreadyMappedTable } from '@/components/already-mapped-table';
+import { VersionHistoryDialog } from '@/components/version-history-dialog';
+import { ComparisonManager } from '@/components/comparison-manager';
+import { processXmlFile } from '@/lib/invoice-parser';
+import { exportToExcel, exportToExcelViettel } from '@/lib/excel-exporter';
+import { processMappingFile, type ColumnMap as MappingColumnMap } from '@/lib/mapping-parser';
+import { processSupplierFile, type ColumnMap as SupplierColumnMap } from '@/lib/supplier-parser';
+
+import type { InvoiceItem as ParsedInvoiceItem } from '@/types/invoice';
+import type { Mapping, Supplier, User as CustomUser, MasterCatalogItem, Invoice, InvoiceItem, CommunityMapping, ProcessingItem, Version } from '@/types/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { Download, Loader2, FileUp, RefreshCw, BookMarked, Search, Users, LogOut, ShieldCheck, KeyRound, Database, FileText, Save, Archive, LayoutDashboard, Library, History, FilePieChart, AlertTriangle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { Avatar, AvatarFallback } from './ui/avatar';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { MappingImportDialog, type ExcelData } from '@/components/mapping-import-dialog';
+import { SupplierImportDialog } from '@/components/supplier-import-dialog';
+
+
+// Helper to sanitize document IDs
+const sanitizeDocId = (id: string) => id.replace(/\//g, '-');
+
+
+export default function InvoiceProcessor() {
+  const [invoiceData, setInvoiceData] = useState<ParsedInvoiceItem[]>([]);
+  const [unmappedItems, setUnmappedItems] = useState<Map<string, ProcessingItem>>(new Map());
+  const [alreadyMappedItems, setAlreadyMappedItems] = useState<Map<string, ProcessingItem>>(new Map());
+  const [unmappedSuppliers, setUnmappedSuppliers] = useState<Map<string, Supplier>>(new Map());
+  
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const [isFindingUnmappedItems, setIsFindingUnmappedItems] = useState(false);
+  const { toast } = useToast();
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [isSupplierCatalogOpen, setIsSupplierCatalogOpen] = useState(false);
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+
+
+  // State for import dialogs
+  const [isMappingImportOpen, setIsMappingImportOpen] = useState(false);
+  const [mappingFileData, setMappingFileData] = useState<ExcelData | null>(null);
+  const [mappingFile, setMappingFile] = useState<File | null>(null);
+  const [isSupplierImportOpen, setIsSupplierImportOpen] = useState(false);
+  const [supplierFileData, setSupplierFileData] = useState<ExcelData | null>(null);
+  const [supplierFile, setSupplierFile] = useState<File | null>(null);
+  const [isImportingMappings, setIsImportingMappings] = useState(false);
+  const [isImportingSuppliers, setIsImportingSuppliers] = useState(false);
+  
+  // State for user changing own password
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  // Search terms for tables
+  const [originalDataSearch, setOriginalDataSearch] = useState('');
+  const [mappedDataSearch, setMappedDataSearch] = useState('');
+  const [unmappedDataSearch, setUnmappedDataSearch] = useState('');
+  const [alreadyMappedSearch, setAlreadyMappedSearch] = useState('');
+  
+  // State for ManualMappingTable
+  const [selectedUnmappedId, setSelectedUnmappedId] = useState<string | null>(null);
+  const [isSavingSession, setIsSavingSession] = useState(false);
+  const [processedFileNames, setProcessedFileNames] = useState<string[]>([]);
+  
+  // State for duplicate invoice handling
+  const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
+  const [duplicateInvoices, setDuplicateInvoices] = useState<Invoice[]>([]);
+
+
+
+  const firestore = useFirestore();
+  
+  const [currentUser, setCurrentUser] = useState<CustomUser | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  
+  // This effect handles fetching the user's profile from localStorage on initial load.
+  useEffect(() => {
+    try {
+      const storedUser = localStorage.getItem('currentUser');
+      if (storedUser) {
+        setCurrentUser(JSON.parse(storedUser));
+      }
+    } catch (error) {
+      console.error("Could not parse user from localStorage", error);
+      localStorage.removeItem('currentUser');
+    }
+    setIsAuthLoading(false);
+  }, []);
+
+
+  // --- Firebase Data Hooks ---
+  const mappingsRef = useMemoFirebase(() => currentUser ? collection(firestore, 'users', currentUser.id, 'mappings') : null, [firestore, currentUser]);
+  const { data: mappingsData, isLoading: isLoadingMappings } = useCollection<Mapping>(mappingsRef);
+  
+  const suppliersRef = useMemoFirebase(() => currentUser ? collection(firestore, 'users', currentUser.id, 'suppliers') : null, [firestore, currentUser]);
+  const { data: suppliersData, isLoading: isLoadingSuppliers } = useCollection<Supplier>(suppliersRef);
+  
+  const masterCatalogRef = useMemoFirebase(() => collection(firestore, 'master_catalog'), [firestore]);
+  const { data: masterCatalogData, isLoading: isLoadingMasterCatalog } = useCollection<MasterCatalogItem>(masterCatalogRef);
+
+  // Memoize the converted Maps
+  const mapping = useMemo(() => {
+      const map = new Map<string, Mapping>();
+      mappingsData?.forEach(item => map.set(item.id, item));
+      return map;
+  }, [mappingsData]);
+
+  const supplierMapping = useMemo(() => {
+      const map = new Map<string, Supplier>();
+      suppliersData?.forEach(item => map.set(item.id, item));
+      return map;
+  }, [suppliersData]);
+  
+  const masterCatalog = useMemo(() => {
+    const map = new Map<string, MasterCatalogItem>();
+    masterCatalogData?.forEach(item => map.set(item.id, item));
+    return map;
+  }, [masterCatalogData]);
+
+  const mappedData = useMemo(() => {
+    return invoiceData.map(item => {
+      const sanitizedId = sanitizeDocId(item['Mã hàng']);
+      const taxCode = item['Mã số thuế']?.trim();
+      const specificId = taxCode ? `${taxCode}-${sanitizedId}` : null;
+      
+      const mapInfo = (specificId ? mapping.get(specificId) : null) ?? mapping.get(sanitizedId);
+
+      if (mapInfo) {
+        const conversionRate = mapInfo.conversionRate || 1;
+        return {
+          ...item,
+          'Mã hàng (gốc)': item['Mã hàng'],
+          'Mã hàng': mapInfo.newCode,
+          'Tên hàng hóa': mapInfo.newName || item['Tên hàng hóa'],
+          'ĐVT': mapInfo.newUnit || item['ĐVT'],
+          'Số lượng': item['Số lượng'] * conversionRate,
+          'Đơn giá': item['Đơn giá'] / conversionRate,
+        };
+      }
+      return item;
+    });
+  }, [invoiceData, mapping]);
+
+ const findUnmappedItems = useCallback(async (invoices: ParsedInvoiceItem[], currentMapping: Map<string, Mapping>) => {
+    if (!currentUser || !firestore) return;
+
+    setIsFindingUnmappedItems(true);
+    try {
+        const newUnmapped = new Map<string, ProcessingItem>();
+        const newAlreadyMapped = new Map<string, ProcessingItem>();
+        const communityFetchPromises: Promise<void>[] = [];
+
+        const processedOriginalCodes = new Set<string>();
+
+        for (const item of invoices) {
+            const itemCode = item['Mã hàng'];
+            const taxCode = item['Mã số thuế']?.trim();
+            if (!itemCode) continue;
+
+            const specificId = taxCode ? `${taxCode}-${sanitizeDocId(itemCode)}` : null;
+            const genericId = sanitizeDocId(itemCode);
+            
+            const uniqueOriginalKey = specificId || genericId;
+            if (processedOriginalCodes.has(uniqueOriginalKey)) {
+                continue;
+            }
+
+            const existingMapping = (specificId ? currentMapping.get(specificId) : null) ?? currentMapping.get(genericId);
+            processedOriginalCodes.add(uniqueOriginalKey);
+
+            const baseItem: Omit<ProcessingItem, 'id'> = {
+                originalCode: itemCode,
+                originalName: item['Tên hàng hóa'],
+                originalUnit: item['ĐVT'],
+                ...(taxCode && { supplierTaxCode: taxCode }),
+                newCode: '',
+                newName: item['Tên hàng hóa'],
+                newUnit: item['ĐVT'],
+                conversionRate: 1,
+            };
+
+            if (existingMapping) {
+                newAlreadyMapped.set(existingMapping.id, { ...baseItem, ...existingMapping });
+            } else {
+                const promise = getDoc(doc(firestore, 'community_mappings', uniqueOriginalKey)).then(communityDoc => {
+                    let suggestion: Partial<Mapping> = {};
+                    if (communityDoc.exists()) {
+                        const communityData = communityDoc.data() as CommunityMapping;
+                        // ONLY suggest unit and conversion rate from community
+                        suggestion = {
+                            newUnit: communityData.newUnit,
+                            conversionRate: communityData.conversionRate,
+                        };
+                    }
+                    newUnmapped.set(uniqueOriginalKey, {
+                        ...baseItem,
+                        id: uniqueOriginalKey,
+                        // Let newName default to originalName, and newCode be empty
+                        newName: baseItem.newName,
+                        newCode: '', 
+                        // Apply suggestions only for unit and conversion rate
+                        newUnit: suggestion.newUnit || baseItem.newUnit,
+                        conversionRate: suggestion.conversionRate || baseItem.conversionRate,
+                    });
+                }).catch(e => {
+                    console.warn("Could not fetch community suggestion for", uniqueOriginalKey, e);
+                    newUnmapped.set(uniqueOriginalKey, { ...baseItem, id: uniqueOriginalKey });
+                });
+                communityFetchPromises.push(promise);
+            }
+        }
+
+        await Promise.all(communityFetchPromises);
+        
+        setAlreadyMappedItems(newAlreadyMapped);
+        setUnmappedItems(newUnmapped);
+    } catch (error) {
+        console.error("Error in findUnmappedItems: ", error);
+        toast({
+            variant: "destructive",
+            title: "Lỗi khi đối chiếu mã",
+            description: "Đã có lỗi xảy ra trong quá trình tìm mã chưa ánh xạ."
+        });
+    } finally {
+        setIsFindingUnmappedItems(false);
+    }
+  }, [currentUser, firestore, toast]);
+
+  const findUnmappedSuppliers = useCallback((invoices: ParsedInvoiceItem[], currentSuppliers: Map<string, Supplier>) => {
+    const suppliersToProcess = new Map<string, Supplier>();
+    const processedTaxIds = new Set<string>();
+
+    invoices.forEach(item => {
+      const taxId = item['Mã số thuế']?.trim();
+      if (!taxId || processedTaxIds.has(taxId)) return;
+      
+      processedTaxIds.add(taxId);
+      const existingSupplier = currentSuppliers.get(taxId);
+
+      if (!existingSupplier) {
+        suppliersToProcess.set(taxId, {
+          id: taxId,
+          supplierName: item['Nhà cung cấp'] || '',
+          supplierCode: '',
+        });
+      } else if (!existingSupplier.supplierCode || existingSupplier.supplierCode.trim() === '') {
+        suppliersToProcess.set(taxId, existingSupplier);
+      }
+    });
+    setUnmappedSuppliers(suppliersToProcess);
+  }, []);
+
+  useEffect(() => {
+    if (invoiceData.length > 0 && currentUser && firestore && !isLoadingMappings) {
+      findUnmappedItems(invoiceData, mapping);
+    }
+  }, [invoiceData, currentUser, firestore, isLoadingMappings, mapping, findUnmappedItems]);
+  
+  useEffect(() => {
+    if (invoiceData.length > 0 && !isLoadingSuppliers) {
+      findUnmappedSuppliers(invoiceData, supplierMapping);
+    }
+  }, [invoiceData, isLoadingSuppliers, supplierMapping, findUnmappedSuppliers]);
+
+  const createInvoiceIdentifier = (invoiceNum: string, date: string, taxCode: string) => {
+    try {
+        const parsedDate = parse(date, 'dd/MM/yyyy', new Date());
+        if(isValid(parsedDate)){
+            const isoDate = format(parsedDate, 'yyyy-MM-dd');
+            return `${invoiceNum}_${isoDate}_${taxCode}`;
+        }
+    } catch (e) {
+        // Fallback for invalid date format
+    }
+    return `${invoiceNum}_${date}_${taxCode}`;
+  };
+
+  const executeSave = async (invoicesToSave: Map<string, Omit<Invoice, 'id'>>, invoicesToDelete: Invoice[] = []) => {
+      if (!currentUser || !firestore) return;
+      setIsSavingSession(true);
+      const now = new Date();
+      
+      const sessionRef = doc(collection(firestore, 'users', currentUser.id, 'import_sessions'));
+      const sessionId = sessionRef.id;
+
+      const newSession: Omit<ImportSession, 'id'> = {
+          userId: currentUser.id,
+          importDate: now.toISOString(),
+          fileNames: processedFileNames,
+          invoiceCount: invoicesToSave.size,
+          itemCount: mappedData.filter(item => invoicesToSave.has(item['Số hóa đơn'])).length,
+      };
+
+      const batch = writeBatch(firestore);
+
+      // 1. Delete old invoices if any
+      for (const invToDelete of invoicesToDelete) {
+          const invoiceDocRef = doc(firestore, 'users', currentUser.id, 'invoices', invToDelete.id);
+          const itemsSnapshot = await getDocs(collection(invoiceDocRef, 'items'));
+          itemsSnapshot.forEach(itemDoc => batch.delete(itemDoc.ref));
+          batch.delete(invoiceDocRef);
+      }
+
+      // 2. Add new session
+      batch.set(sessionRef, newSession);
+
+      // 3. Add new invoices and items
+      invoicesToSave.forEach((invoiceHeader, invoiceNum) => {
+          const sanitizedInvoiceNum = sanitizeDocId(invoiceNum);
+          const invoiceDocRef = doc(firestore, 'users', currentUser.id, 'invoices', sanitizedInvoiceNum);
+          
+          const uniqueId = createInvoiceIdentifier(invoiceNum, invoiceHeader.invoiceDate, invoiceHeader.sellerTaxCode);
+          batch.set(invoiceDocRef, { ...invoiceHeader, id: invoiceNum, uniqueIdentifier: uniqueId, importSessionId: sessionId });
+
+          const itemsForThisInvoice = mappedData.filter(item => item['Số hóa đơn'] === invoiceNum);
+          itemsForThisInvoice.forEach((itemData, index) => {
+              const itemDocRef = doc(collection(invoiceDocRef, 'items'));
+              let isoDate = '';
+              try {
+                  const parsedDate = parse(itemData['Ngày hóa đơn'], 'dd/MM/yyyy', new Date());
+                  if (isValid(parsedDate)) {
+                      isoDate = format(parsedDate, 'yyyy-MM-dd');
+                  }
+              } catch(e) { /* ignore */ }
+
+              const invoiceItem: Omit<InvoiceItem, 'id'> = {
+                  userId: currentUser.id,
+                  invoiceId: invoiceNum,
+                  invoiceDate: itemData['Ngày hóa đơn'],
+                  invoiceDateISO: isoDate,
+                  sellerName: itemData['Nhà cung cấp'],
+                  lineNumber: itemData['STT'] || String(index + 1),
+                  itemCode: itemData['Mã hàng'],
+                  itemName: itemData['Tên hàng hóa'],
+                  unit: itemData['ĐVT'],
+                  quantity: String(itemData['Số lượng']),
+                  unitPrice: String(itemData['Đơn giá']),
+                  totalAmount: String(itemData['Thành tiền']),
+                  taxRate: itemData['Thuế suất'],
+                  lotNumber: itemData['Số lô'],
+                  expirationDate: itemData['Hạn dùng'],
+              };
+              batch.set(itemDocRef, invoiceItem);
+          });
+      });
+
+      try {
+          await batch.commit();
+          toast({
+              title: "Đã lưu kết quả nhập hàng",
+              description: `${invoicesToSave.size} hóa đơn và ${mappedData.filter(item => invoicesToSave.has(item['Số hóa đơn'])).length} dòng sản phẩm đã được lưu.`,
+          });
+          setInvoiceData([]);
+          setUnmappedItems(new Map());
+          setUnmappedSuppliers(new Map());
+          setAlreadyMappedItems(new Map());
+          setProcessedFileNames([]);
+          setDuplicateInvoices([]);
+          setIsDuplicateDialogOpen(false);
+      } catch (error) {
+          const permissionError = new FirestorePermissionError({
+              path: 'batch write to multiple documents',
+              operation: 'write'
+          });
+          errorEmitter.emit('permission-error', permissionError);
+      } finally {
+          setIsSavingSession(false);
+      }
+  };
+
+
+ const handleSaveSession = async () => {
+    if (!currentUser || !firestore || mappedData.length === 0) return;
+    
+    setIsSavingSession(true);
+    
+    const uniqueInvoicesToSave = new Map<string, Omit<Invoice, 'id'>>();
+    const uniqueIdentifiers = new Set<string>();
+
+    mappedData.forEach(item => {
+        const invoiceNum = item['Số hóa đơn'];
+        if (!uniqueInvoicesToSave.has(invoiceNum)) {
+             const identifier = createInvoiceIdentifier(invoiceNum, item['Ngày hóa đơn'], item['Mã số thuế']);
+             uniqueIdentifiers.add(identifier);
+             uniqueInvoicesToSave.set(invoiceNum, {
+                importSessionId: '', // will be set later
+                provider: item['Nhà cung cấp'],
+                invoiceDate: item['Ngày hóa đơn'],
+                sellerName: item['Nhà cung cấp'],
+                sellerTaxCode: item['Mã số thuế'],
+                sellerAddress: item['Địa chỉ'],
+                buyerName: item['Nhà thuốc'],
+                fileName: item['Tên file'],
+                portalLink: item['Link truy cập'],
+                accessCode: item['Mã truy cập'],
+            });
+        }
+    });
+
+    try {
+        const invoicesRef = collection(firestore, 'users', currentUser.id, 'invoices');
+        const q = query(invoicesRef, where('uniqueIdentifier', 'in', Array.from(uniqueIdentifiers)));
+        const querySnapshot = await getDocs(q);
+        
+        const foundDuplicates = querySnapshot.docs.map(doc => doc.data() as Invoice);
+
+        if (foundDuplicates.length > 0) {
+            setDuplicateInvoices(foundDuplicates);
+            setIsDuplicateDialogOpen(true);
+        } else {
+            await executeSave(uniqueInvoicesToSave);
+        }
+    } catch (e) {
+        console.error("Error checking for duplicates:", e);
+        toast({ variant: 'destructive', title: "Lỗi kiểm tra dữ liệu", description: "Không thể kiểm tra hóa đơn trùng lặp." });
+    } finally {
+        if (duplicateInvoices.length === 0) { // Only stop spinner if not opening dialog
+            setIsSavingSession(false);
+        }
+    }
+};
+
+const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') => {
+    setIsDuplicateDialogOpen(false);
+    
+    if (choice === 'cancel') {
+        setIsSavingSession(false);
+        return;
+    }
+
+    const allInvoices = new Map<string, Omit<Invoice, 'id'>>();
+    mappedData.forEach(item => {
+        const invoiceNum = item['Số hóa đơn'];
+        if (!allInvoices.has(invoiceNum)) {
+            allInvoices.set(invoiceNum, {
+                importSessionId: '',
+                provider: item['Nhà cung cấp'],
+                invoiceDate: item['Ngày hóa đơn'],
+                sellerName: item['Nhà cung cấp'],
+                sellerTaxCode: item['Mã số thuế'],
+                sellerAddress: item['Địa chỉ'],
+                buyerName: item['Nhà thuốc'],
+                fileName: item['Tên file'],
+                portalLink: item['Link truy cập'],
+                accessCode: item['Mã truy cập'],
+            });
+        }
+    });
+
+    if (choice === 'overwrite') {
+        await executeSave(allInvoices, duplicateInvoices);
+    } else if (choice === 'skip') {
+        const duplicatesIds = new Set(duplicateInvoices.map(d => d.id));
+        const invoicesToSave = new Map<string, Omit<Invoice, 'id'>>();
+        allInvoices.forEach((value, key) => {
+            if (!duplicatesIds.has(key)) {
+                invoicesToSave.set(key, value);
+            }
+        });
+        if(invoicesToSave.size > 0){
+          await executeSave(invoicesToSave);
+        } else {
+          toast({ title: "Không có hóa đơn mới nào để lưu." });
+          setIsSavingSession(false);
+        }
+    }
+};
+
+
+
+  const handleFileProcessing = async (files: File[]) => {
+    if (files.length === 0) return;
+
+    setIsProcessingFiles(true);
+    setInvoiceData([]);
+    setUnmappedItems(new Map());
+    setAlreadyMappedItems(new Map());
+    setUnmappedSuppliers(new Map());
+    setProcessedFileNames([]);
+
+    const allItems: ParsedInvoiceItem[] = [];
+    const finalFileNames: string[] = [];
+    const errors: string[] = [];
+
+    for (const file of files) {
+      try {
+        if (file.name.toLowerCase().endsWith('.zip')) {
+          finalFileNames.push(file.name);
+          const zip = await JSZip.loadAsync(file);
+          
+          let invoiceFile = null;
+
+          // Try to find the invoice file in a specific order of priority
+          // 1. A file named 'invoice' that is not a directory
+          const rootInvoiceFile = zip.file('invoice');
+          if (rootInvoiceFile && !rootInvoiceFile.dir) {
+              invoiceFile = rootInvoiceFile;
+          } 
+          // 2. A file named 'invoice' inside 'itax' folder
+          else {
+              const itaxInvoiceFile = zip.file('itax/invoice');
+              if (itaxInvoiceFile && !itaxInvoiceFile.dir) {
+                  invoiceFile = itaxInvoiceFile;
+              }
+              // 3. Fallback to any file with .xml extension if others not found
+              else {
+                  const xmlFiles = zip.filter((relativePath, file) => {
+                      return !file.dir && relativePath.toLowerCase().endsWith('.xml');
+                  });
+                  if (xmlFiles.length > 0) {
+                      invoiceFile = xmlFiles[0]; // Take the first one found
+                  }
+              }
+          }
+          
+          if (invoiceFile) {
+            const content = await invoiceFile.async('string');
+            // Use the zip file name for identification
+            const items = await processXmlFile(content, file.name);
+            allItems.push(...items);
+          } else {
+            errors.push(`Không tìm thấy file XML hóa đơn trong file ${file.name}`);
+          }
+        } else if (file.name.toLowerCase().endsWith('.xml')) {
+          finalFileNames.push(file.name);
+          const content = await file.text();
+          const items = await processXmlFile(content, file.name);
+          allItems.push(...items);
+        }
+        // Silently ignore other file types
+      } catch (e: any) {
+        errors.push(e.message || `Lỗi xử lý file ${file.name}`);
+      }
+    }
+    
+    if (errors.length > 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Đã xảy ra lỗi xử lý tệp',
+        description: <div className="whitespace-pre-wrap">{errors.join('\n')}</div>,
+      });
+    }
+
+    const sortedData = allItems.sort((a, b) => {
+      const dateA = a['Ngày hóa đơn']?.split('/').reverse().join('') ?? '';
+      const dateB = b['Ngày hóa đơn']?.split('/').reverse().join('') ?? '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return a['Số hóa đơn'].localeCompare(b['Số hóa đơn']);
+    });
+    
+    setInvoiceData(sortedData);
+    setProcessedFileNames(finalFileNames);
+    setIsProcessingFiles(false);
+  };
+
+
+   const handleMappingFileSelect = (files: File[]) => {
+    if (files.length === 0) return;
+    const file = files[0];
+    setMappingFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook: WorkBook = read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        
+        if (jsonData.length < 1) {
+            toast({ variant: "destructive", title: "Tệp Excel trống", description: "Tệp không có dữ liệu." });
+            return;
+        }
+
+        const headers = jsonData[0].map(h => String(h));
+        const preview = jsonData.slice(1, 6); // Get up to 5 rows for preview
+
+        setMappingFileData({ headers, preview });
+        setIsMappingImportOpen(true);
+      } catch (error) {
+        toast({ variant: "destructive", title: "Lỗi đọc tệp Excel", description: "Không thể đọc hoặc phân tích tệp." });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  
+  const handleConfirmMappingImport = async (columnMap: MappingColumnMap) => {
+    if (!mappingFile || !currentUser || !firestore) return;
+    setIsImportingMappings(true);
+    
+    try {
+      const newMappingFromFile = await processMappingFile(mappingFile, columnMap);
+      
+      const batch = writeBatch(firestore);
+      newMappingFromFile.forEach((value, key) => {
+          const docRef = doc(firestore, 'users', currentUser.id, 'mappings', key);
+          batch.set(docRef, { ...value, id: key });
+      });
+
+      await batch.commit()
+        .then(() => {
+          toast({
+            title: 'Tải tệp ánh xạ thành công',
+            description: `Đã tải lên và lưu ${newMappingFromFile.size} ánh xạ vào cơ sở dữ liệu.`,
+          });
+          setMappingFile(null);
+          setMappingFileData(null);
+          setIsMappingImportOpen(false);
+        })
+        .catch(error => {
+          const permissionError = new FirestorePermissionError({
+            path: `batch write to users/${currentUser.id}/mappings`,
+            operation: 'write',
+            requestResourceData: { info: `Importing ${newMappingFromFile.size} mappings` }
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
+
+    } catch (e: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Lỗi xử lý tệp ánh xạ',
+        description: e.message,
+      });
+    } finally {
+        setIsImportingMappings(false);
+    }
+  };
+
+  const handleSupplierFileSelect = (files: File[]) => {
+    if (files.length === 0) return;
+    const file = files[0];
+    setSupplierFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+
+        if (jsonData.length < 1) {
+          toast({ variant: "destructive", title: "Tệp Excel trống" });
+          return;
+        }
+
+        const headers = jsonData[0].map(h => String(h));
+        const preview = jsonData.slice(1, 6);
+
+        setSupplierFileData({ headers, preview });
+        setIsSupplierImportOpen(true);
+      } catch (error) {
+        toast({ variant: "destructive", title: "Lỗi đọc tệp Excel" });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleConfirmSupplierImport = async (columnMap: SupplierColumnMap) => {
+    if (!supplierFile || !currentUser || !firestore) return;
+    setIsImportingSuppliers(true);
+
+    try {
+      const newSuppliers = await processSupplierFile(supplierFile, columnMap);
+      const batch = writeBatch(firestore);
+      newSuppliers.forEach((value, key) => {
+        const docRef = doc(firestore, 'users', currentUser.id, 'suppliers', key);
+        batch.set(docRef, { ...value, id: key });
+      });
+
+      await batch.commit()
+        .then(() => {
+          toast({
+            title: 'Tải tệp nhà cung cấp thành công',
+            description: `Đã tải lên và lưu ${newSuppliers.size} nhà cung cấp.`,
+          });
+          setSupplierFile(null);
+          setSupplierFileData(null);
+          setIsSupplierImportOpen(false);
+        })
+        .catch(error => {
+          const permissionError = new FirestorePermissionError({
+            path: `batch write to users/${currentUser.id}/suppliers`,
+            operation: 'write',
+            requestResourceData: { info: `Importing ${newSuppliers.size} suppliers` }
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
+
+    } catch (e: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Lỗi xử lý tệp nhà cung cấp',
+        description: e.message,
+      });
+    } finally {
+        setIsImportingSuppliers(false);
+    }
+  };
+
+  const handleUpdateUnmappedItem = (updatedItem: { id: string; newValues: Partial<Mapping> }) => {
+    const { id, newValues } = updatedItem;
+    setUnmappedItems(prev => {
+        const newMap = new Map(prev);
+        const currentItem = newMap.get(id);
+        if (currentItem) {
+            newMap.set(id, { ...currentItem, ...newValues });
+        }
+        return newMap;
+    });
+  };
+  
+  const handleUpdateAlreadyMappedItem = (updatedItem: { id: string; newValues: Partial<Mapping> }) => {
+    const { id, newValues } = updatedItem;
+    
+    // Also update the main mapping in memory so the final mapped data is correct
+    mapping.set(id, { ...mapping.get(id)!, ...newValues });
+
+    setAlreadyMappedItems(prev => {
+        const newMap = new Map(prev);
+        const currentItem = newMap.get(id);
+        if (currentItem) {
+            newMap.set(id, { ...currentItem, ...newValues });
+        }
+        return newMap;
+    });
+  };
+
+  const handleUnmapItem = (itemToUnmap: ProcessingItem) => {
+    setAlreadyMappedItems(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(itemToUnmap.id);
+        return newMap;
+    });
+    setUnmappedItems(prev => {
+        const newMap = new Map(prev);
+        newMap.set(itemToUnmap.id, itemToUnmap);
+        return newMap;
+    });
+    toast({ title: "Đã hủy ánh xạ", description: `Mã "${itemToUnmap.originalCode}" đã được chuyển sang danh sách cần xử lý.` });
+  };
+
+
+  const handleIgnoreUnmappedItem = (id: string) => {
+    setUnmappedItems(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(id);
+      return newMap;
+    });
+  };
+
+  const handleConfirmManualMappings = async () => {
+    if (!currentUser || !firestore) return;
+  
+    const batch = writeBatch(firestore);
+    const mappingsToSave = new Map<string, Mapping>();
+  
+    unmappedItems.forEach((value, key) => {
+      if (value.newCode && value.newCode.trim() !== '') {
+        const mappingToSave: Mapping = {
+            id: value.id,
+            originalCode: value.originalCode,
+            originalName: value.originalName,
+            newName: value.newName,
+            newCode: value.newCode,
+            originalUnit: value.originalUnit,
+            newUnit: value.newUnit,
+            conversionRate: value.conversionRate,
+            ...(value.supplierTaxCode && { supplierTaxCode: value.supplierTaxCode }),
+        };
+        mappingsToSave.set(key, mappingToSave);
+      }
+    });
+  
+    if (mappingsToSave.size > 0) {
+        for (const [key, value] of mappingsToSave.entries()) {
+            const userMappingRef = doc(firestore, 'users', currentUser.id, 'mappings', key);
+            batch.set(userMappingRef, value);
+            
+            const communityMappingRef = doc(firestore, 'community_mappings', key);
+            const communityData: Omit<CommunityMapping, 'id' | 'updateCount'> & { updateCount: any } = {
+                originalCode: value.originalCode,
+                ...(value.supplierTaxCode && { supplierTaxCode: value.supplierTaxCode }),
+                newCode: value.newCode,
+                newName: value.newName,
+                newUnit: value.newUnit,
+                conversionRate: value.conversionRate,
+                updateCount: increment(1)
+            };
+            batch.set(communityMappingRef, communityData, { merge: true });
+        }
+  
+      await batch.commit()
+        .then(() => {
+          setUnmappedItems(prev => {
+            const remaining = new Map(prev);
+            mappingsToSave.forEach((_, key) => remaining.delete(key));
+            return remaining;
+          });
+          setAlreadyMappedItems(prev => {
+              const newMap = new Map(prev);
+              mappingsToSave.forEach((value, key) => newMap.set(key, value as ProcessingItem));
+              return newMap;
+          });
+      
+          toast({
+            title: "Cập nhật danh mục thành công",
+            description: `Đã thêm ${mappingsToSave.size} ánh xạ mới.`
+          });
+        })
+        .catch(error => {
+          const permissionError = new FirestorePermissionError({
+            path: `batch write to mappings and community_mappings`,
+            operation: 'write',
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
+
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Chưa có thay đổi",
+        description: "Bạn cần nhập 'Mã ánh xạ mới' để cập nhật."
+      });
+    }
+  };
+
+  const handleUpdateUnmappedSupplier = (taxId: string, field: keyof Supplier, value: string) => {
+    setUnmappedSuppliers(prev => {
+        const newMap = new Map(prev);
+        const supplier = newMap.get(taxId);
+        if (supplier) {
+            newMap.set(taxId, { ...supplier, [field]: value });
+        }
+        return newMap;
+    });
+  };
+
+
+  const handleConfirmUnmappedSuppliers = async () => {
+    if (!currentUser || !firestore) return;
+
+    const suppliersToUpdate = Array.from(unmappedSuppliers.values()).filter(
+      s => s.supplierCode && s.supplierCode.trim() !== '' && s.supplierName && s.supplierName.trim() !== ''
+    );
+    if (suppliersToUpdate.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Chưa có thay đổi",
+        description: "Bạn cần nhập 'Mã nhà cung cấp' và đảm bảo 'Tên NCC' không trống để cập nhật.",
+      });
+      return;
+    }
+
+    const batch = writeBatch(firestore);
+    suppliersToUpdate.forEach(supplier => {
+      const docRef = doc(firestore, 'users', currentUser.id, 'suppliers', supplier.id);
+      batch.set(docRef, supplier, { merge: true });
+    });
+
+    await batch.commit()
+      .then(() => {
+        setUnmappedSuppliers(new Map());
+        toast({
+          title: "Cập nhật thành công",
+          description: `Đã cập nhật thông tin cho ${suppliersToUpdate.length} nhà cung cấp.`,
+        });
+      })
+      .catch(error => {
+        const permissionError = new FirestorePermissionError({
+            path: `batch write to users/${currentUser.id}/suppliers`,
+            operation: 'write'
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+  };
+
+  const handleDeleteMapping = async (mappingId: string) => {
+    if (!currentUser || !firestore) return;
+    const docRef = doc(firestore, 'users', currentUser.id, 'mappings', mappingId);
+
+    deleteDoc(docRef)
+      .then(() => {
+        toast({
+          title: "Đã xóa ánh xạ",
+          description: `Đã xóa quy tắc ánh xạ: ${mappingId}`
+        });
+      })
+      .catch((serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+  };
+  
+  const handleUpdateMappingInCatalog = async (mappingId: string, newValues: Mapping) => {
+    if (!currentUser || !firestore) return;
+
+    const docRef = doc(firestore, 'users', currentUser.id, 'mappings', mappingId);
+    
+    const finalValues = { ...newValues, id: mappingId };
+
+    setDoc(docRef, finalValues, { merge: true })
+      .then(() => {
+        toast({
+            title: "Cập nhật thành công",
+            description: `Đã cập nhật quy tắc ánh xạ cho: ${mappingId}`
+        });
+      })
+      .catch((serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'update',
+          requestResourceData: finalValues,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+  };
+
+  const handleAddSupplier = async (newSupplier: Supplier) => {
+    if (!currentUser || !firestore) return;
+    const docRef = doc(firestore, 'users', currentUser.id, 'suppliers', newSupplier.id);
+    
+    setDoc(docRef, newSupplier)
+      .then(() => {
+        toast({
+            title: "Thêm thành công",
+            description: `Đã thêm nhà cung cấp mới: ${newSupplier.supplierName}`
+        });
+      })
+      .catch((serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'create',
+          requestResourceData: newSupplier,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+  };
+
+  const handleDeleteSupplier = async (taxId: string) => {
+    if (!currentUser || !firestore) return;
+    const docRef = doc(firestore, 'users', currentUser.id, 'suppliers', taxId);
+
+    deleteDoc(docRef)
+      .then(() => {
+        toast({
+            title: "Đã xóa nhà cung cấp",
+            description: `Đã xóa nhà cung cấp có MST: ${taxId}`
+        });
+      })
+      .catch((serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: docRef.path,
+          operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+  };
+
+  const handleUpdateSupplier = async (originalTaxId: string, newValues: Supplier) => {
+    if (!currentUser || !firestore) return;
+    
+    if (originalTaxId !== newValues.id) {
+      const batch = writeBatch(firestore);
+      const oldDocRef = doc(firestore, 'users', currentUser.id, 'suppliers', originalTaxId);
+      const newDocRef = doc(firestore, 'users', currentUser.id, 'suppliers', newValues.id);
+      
+      batch.delete(oldDocRef);
+      batch.set(newDocRef, newValues);
+      
+      batch.commit()
+        .then(() => {
+           toast({
+              title: "Cập nhật thành công",
+              description: `Đã cập nhật thông tin cho nhà cung cấp: ${newValues.supplierName}`
+          });
+        })
+        .catch((serverError) => {
+            const permissionError = new FirestorePermissionError({
+              path: newDocRef.path,
+              operation: 'write',
+              requestResourceData: newValues,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+        });
+    } else {
+      const docRef = doc(firestore, 'users', currentUser.id, 'suppliers', newValues.id);
+      setDoc(docRef, newValues, { merge: true })
+        .then(() => {
+          toast({
+              title: "Cập nhật thành công",
+              description: `Đã cập nhật thông tin cho nhà cung cấp: ${newValues.supplierName}`
+          });
+        })
+        .catch((serverError) => {
+          const permissionError = new FirestorePermissionError({
+            path: docRef.path,
+            operation: 'update',
+            requestResourceData: newValues,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
+    }
+  };
+
+  const handleExport = (data: ParsedInvoiceItem[], type: 'goc' | 'anhxa') => {
+    if (data.length === 0) {
+        toast({
+            variant: "destructive",
+            title: "Không có dữ liệu",
+            description: "Không có dữ liệu để xuất.",
+        });
+        return;
+    }
+    exportToExcel(data, type, supplierMapping);
+  };
+  
+  const handleExportViettel = (data: ParsedInvoiceItem[]) => {
+    if (data.length === 0) {
+        toast({
+            variant: "destructive",
+            title: "Không có dữ liệu",
+            description: "Không có dữ liệu để xuất.",
+        });
+        return;
+    }
+    exportToExcelViettel(data, supplierMapping);
+  };
+  
+  const currentUnmappedList = useMemo(() => {
+    let list = Array.from(unmappedItems.values());
+    if (unmappedDataSearch) {
+      const lowercasedFilter = unmappedDataSearch.toLowerCase();
+      list = list.filter(item => 
+        (item.originalCode || '').toLowerCase().includes(lowercasedFilter) ||
+        (item.newName || '').toLowerCase().includes(lowercasedFilter)
+      );
+    }
+    return list;
+  }, [unmappedItems, unmappedDataSearch]);
+  
+   const currentAlreadyMappedList = useMemo(() => {
+    let list = Array.from(alreadyMappedItems.values());
+    if (alreadyMappedSearch) {
+      const lowercasedFilter = alreadyMappedSearch.toLowerCase();
+      list = list.filter(item =>
+        (item.originalCode || '').toLowerCase().includes(lowercasedFilter) ||
+        (item.newName || '').toLowerCase().includes(lowercasedFilter) ||
+        (item.newCode || '').toLowerCase().includes(lowercasedFilter)
+      );
+    }
+    return list;
+  }, [alreadyMappedItems, alreadyMappedSearch]);
+
+ const handleAuthAction = async (action: 'login' | 'logout' | 'updatePassword', credentials?: {username?: string, password?: string, newPassword?: string}) => {
+    if (!firestore) return;
+    setAuthError(null);
+
+    if (action === 'login') {
+        const { username, password } = credentials!;
+        if (!username || !password) {
+            setAuthError('Vui lòng nhập tên đăng nhập và mật khẩu.');
+            return;
+        }
+        
+        try {
+            const usersRef = collection(firestore, 'users');
+            const q = query(usersRef, where('username', '==', username));
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) {
+                setAuthError('Tên đăng nhập không tồn tại.');
+                return;
+            }
+
+            const userDoc = snapshot.docs[0];
+            const userData = userDoc.data() as CustomUser;
+
+            if (userData.password !== password) {
+                setAuthError('Mật khẩu không đúng.');
+                return;
+            }
+            
+            const userToStore = { ...userData, id: userDoc.id };
+            localStorage.setItem('currentUser', JSON.stringify(userToStore));
+            setCurrentUser(userToStore);
+
+        } catch (error) {
+            console.error("Login error:", error);
+            setAuthError("Đã xảy ra lỗi khi đăng nhập.");
+        }
+    } else if (action === 'logout') {
+        localStorage.removeItem('currentUser');
+        setCurrentUser(null);
+        // Clear all processing data on logout
+        setInvoiceData([]);
+        setUnmappedItems(new Map());
+        setAlreadyMappedItems(new Map());
+        setUnmappedSuppliers(new Map());
+        setProcessedFileNames([]);
+
+    } else if (action === 'updatePassword') {
+        if (currentUser && credentials?.newPassword) {
+             const userDocRef = doc(firestore, 'users', currentUser.id);
+             await updateDoc(userDocRef, { password: credentials.newPassword })
+              .then(() => {
+                toast({ title: 'Thành công', description: 'Đã đổi mật khẩu của bạn.' });
+                setIsPasswordDialogOpen(false);
+                setNewPassword('');
+                setConfirmNewPassword('');
+              })
+              .catch(error => {
+                const permissionError = new FirestorePermissionError({
+                  path: userDocRef.path,
+                  operation: 'update',
+                  requestResourceData: { password: '***' },
+                });
+                errorEmitter.emit('permission-error', permissionError);
+              });
+        }
+    }
+};
+
+  const AuthComponent = () => {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+    const onLoginClick = async () => {
+        setIsLoggingIn(true);
+        await handleAuthAction('login', { username, password });
+        setIsLoggingIn(false);
+    }
+
+    return (
+      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-sm">
+            <CardHeader className="text-center">
+                <CardTitle>Chào mừng bạn</CardTitle>
+                <CardDescription>Đăng nhập để tiếp tục</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="username">Tên đăng nhập</Label>
+                <Input id="username" type="text" placeholder="admin" value={username} onChange={(e) => setUsername(e.target.value)} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="password">Mật khẩu</Label>
+                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              </div>
+              {authError && <p className="text-sm font-medium text-destructive">{authError}</p>}
+            </CardContent>
+             <CardFooter className="flex flex-col gap-4">
+                <Button onClick={onLoginClick} className="w-full" disabled={isLoggingIn}>
+                  {isLoggingIn && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Đăng nhập
+                </Button>
+                <p className="text-xs text-muted-foreground text-center w-full pt-2">
+                    Dữ liệu của bạn được lưu trữ an toàn và riêng tư.
+                </p>
+            </CardFooter>
+        </Card>
+      </div>
+    );
+  };
+  
+  const handleChangePassword = async () => {
+    if (!newPassword) {
+      toast({ variant: 'destructive', title: 'Lỗi', description: 'Mật khẩu mới không được để trống.' });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast({ variant: 'destructive', title: 'Lỗi', description: 'Mật khẩu xác nhận không khớp.' });
+      return;
+    }
+    setIsUpdatingPassword(true);
+    await handleAuthAction('updatePassword', { newPassword });
+    setIsUpdatingPassword(false);
+  };
+
+  const canSaveSession = useMemo(() => {
+    return invoiceData.length > 0 && currentUnmappedList.length === 0 && unmappedSuppliers.size === 0;
+  }, [invoiceData, currentUnmappedList, unmappedSuppliers]);
+  
+  if (isAuthLoading) {
+    return (
+        <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4">
+            <Loader2 className="h-16 w-16 animate-spin text-primary" />
+            <p className="mt-4 text-muted-foreground">Đang tải...</p>
+        </div>
+    )
+  }
+
+  if (!currentUser) {
+    return <AuthComponent />;
+  }
+
+  return (
+    <div className="space-y-8">
+      {isMappingImportOpen && mappingFileData && (
+        <MappingImportDialog
+          isOpen={isMappingImportOpen}
+          onOpenChange={setIsMappingImportOpen}
+          excelData={mappingFileData}
+          onConfirm={handleConfirmMappingImport}
+          isImporting={isImportingMappings}
+        />
+      )}
+      
+      {isSupplierImportOpen && supplierFileData && (
+        <SupplierImportDialog
+          isOpen={isSupplierImportOpen}
+          onOpenChange={setIsSupplierImportOpen}
+          excelData={supplierFileData}
+          onConfirm={handleConfirmSupplierImport}
+          isImporting={isImportingSuppliers}
+        />
+      )}
+      
+      <MappingCatalogDialog 
+        isOpen={isCatalogOpen} 
+        onOpenChange={setIsCatalogOpen}
+        mapping={mapping}
+        onDeleteMapping={handleDeleteMapping}
+        onUpdateMapping={handleUpdateMappingInCatalog}
+        suppliers={supplierMapping}
+        masterCatalog={masterCatalog}
+      />
+      <SupplierCatalogDialog
+        isOpen={isSupplierCatalogOpen}
+        onOpenChange={setIsSupplierCatalogOpen}
+        supplierMapping={supplierMapping}
+        onAddSupplier={handleAddSupplier}
+        onDeleteSupplier={handleDeleteSupplier}
+        onUpdateSupplier={handleUpdateSupplier}
+      />
+      
+      
+      <VersionHistoryDialog
+          isOpen={isVersionHistoryOpen}
+          onOpenChange={setIsVersionHistoryOpen}
+          userRole={currentUser.role}
+      />
+
+
+       <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Đổi mật khẩu</DialogTitle>
+            <DialogDescription>
+              Nhập mật khẩu mới cho tài khoản của bạn.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="new-pw" className="text-right">
+                Mật khẩu mới
+              </Label>
+              <Input id="new-pw" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="col-span-3" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="confirm-pw" className="text-right">
+                Xác nhận
+              </Label>
+              <Input id="confirm-pw" type="password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} className="col-span-3" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleChangePassword} disabled={isUpdatingPassword}>
+              {isUpdatingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Lưu thay đổi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+       <AlertDialog open={isDuplicateDialogOpen} onOpenChange={setIsDuplicateDialogOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="text-destructive h-6 w-6" />
+                        Phát hiện Hóa đơn Trùng lặp
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                       Hệ thống đã tìm thấy {duplicateInvoices.length} hóa đơn trong tệp của bạn đã tồn tại trong lịch sử. Bạn muốn làm gì?
+                       <div className="mt-2 max-h-32 overflow-y-auto rounded-md border bg-muted p-2 text-sm text-foreground">
+                        {duplicateInvoices.map(inv => <div key={inv.id}>- HĐ: {inv.id} (NCC: {inv.sellerName})</div>)}
+                      </div>
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="text-sm text-muted-foreground">
+                   <p>Vui lòng chọn một hành động để tiếp tục.</p>
+                 </div>
+                <AlertDialogFooter>
+                    <Button variant="outline" onClick={() => handleDuplicateChoice('cancel')}>Hủy bỏ</Button>
+                    <Button variant="secondary" onClick={() => handleDuplicateChoice('skip')}>Chỉ lưu HĐ mới</Button>
+                    <Button variant="destructive" onClick={() => handleDuplicateChoice('overwrite')}>Xóa cũ & Lưu mới</Button>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+
+      {/* ---===[ KHU VỰC 1: TẢI TỆP ]===--- */}
+      <Card className="w-full shadow-lg">
+        <CardHeader className="text-center pb-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+                 <div className="flex items-center gap-2 flex-wrap">
+                    {currentUser.role === 'ADMIN' && (
+                        <Link href="/admin">
+                            <Button variant="outline">
+                                <ShieldCheck className="mr-2 h-4 w-4" />
+                                Quản trị
+                            </Button>
+                        </Link>
+                    )}
+                     <Link href="/accounts">
+                        <Button variant="outline">
+                            <FileText className="mr-2 h-4 w-4" />
+                            Quản lý tài khoản
+                        </Button>
+                    </Link>
+                    <Link href="/catalogs">
+                        <Button variant="outline">
+                            <Database className="mr-2 h-4 w-4" />
+                            Danh mục
+                        </Button>
+                    </Link>
+                     <Link href="/data">
+                        <Button variant="outline">
+                            <Archive className="mr-2 h-4 w-4" />
+                            Dữ liệu đã nhập
+                        </Button>
+                    </Link>
+                    <Link href="/dashboard">
+                        <Button variant="outline">
+                            <LayoutDashboard className="mr-2 h-4 w-4" />
+                            Dashboard
+                        </Button>
+                    </Link>
+                     <Link href="/tax-report">
+                        <Button variant="outline">
+                            <FilePieChart className="mr-2 h-4 w-4" />
+                            Báo cáo Thuế
+                        </Button>
+                    </Link>
+                 </div>
+                 {currentUser && (
+                    <div className="flex items-center gap-2 self-start sm:ml-auto">
+                        <div className="text-right">
+                            <p className="font-semibold text-sm">{currentUser.fullName || currentUser.username}</p>
+                            <p className='text-xs text-muted-foreground'>{currentUser.role}</p>
+                        </div>
+                        <Avatar>
+                            <AvatarFallback>{(currentUser.fullName || currentUser.username || 'U').charAt(0).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                         <Button variant="outline" size="sm" onClick={() => setIsPasswordDialogOpen(true)}>
+                            <KeyRound className="mr-2 h-4 w-4"/>
+                            Đổi mật khẩu
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleAuthAction('logout')}>
+                            <LogOut className="h-5 w-5" />
+                        </Button>
+                    </div>
+                )}
+            </div>
+          <CardTitle className="text-3xl font-bold tracking-tight text-primary pt-4">
+            CHƯƠNG TRÌNH QUẢN LÝ NHẬP HÀNG BẰNG XML
+          </CardTitle>
+          <CardDescription className="text-lg">
+            Tải lên các tệp XML hóa đơn, tệp ánh xạ và tệp nhà cung cấp.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-8 md:grid-cols-3">
+          <div>
+            <div className="flex justify-center items-center mb-4 h-9">
+                <h3 className="text-lg font-medium text-center">1. Tải tệp hóa đơn (XML/ZIP)</h3>
+            </div>
+            <FileUploader
+              id="xml-invoices"
+              onFilesSelected={handleFileProcessing}
+              acceptedFileTypes=".xml,.zip"
+              uploadIcon={<FileUp className="h-12 w-12 text-primary" />}
+              buttonText="Chọn tệp XML hoặc ZIP"
+              dragText="Kéo và thả tệp vào đây"
+            />
+          </div>
+          <div>
+            <div className="flex justify-center items-center mb-4 gap-4 h-9">
+              <h3 className="text-lg font-medium text-center">2. Tệp ánh xạ (Excel)</h3>
+              <Button variant="outline" size="sm" onClick={() => setIsCatalogOpen(true)}>
+                <BookMarked className="mr-2 h-4 w-4" />
+                Xem danh mục ({mapping.size})
+              </Button>
+            </div>
+            <FileUploader
+              id="mapping"
+              onFilesSelected={handleMappingFileSelect}
+              acceptedFileTypes=".xlsx, .xls"
+              multiple={false}
+              uploadIcon={<FileUp className="h-12 w-12 text-accent" />}
+              buttonText="Chọn tệp Excel"
+              dragText="Kéo và thả tệp ánh xạ vào đây"
+            />
+          </div>
+          <div>
+            <div className="flex justify-center items-center mb-4 gap-4 h-9">
+                <h3 className="text-lg font-medium text-center">3. Tệp nhà cung cấp (Excel)</h3>
+                <Button variant="outline" size="sm" onClick={() => setIsSupplierCatalogOpen(true)}>
+                    <Users className="mr-2 h-4 w-4" />
+                    Xem danh sách NCC ({supplierMapping.size})
+                </Button>
+            </div>
+            <FileUploader 
+              id="supplier"
+              onFilesSelected={handleSupplierFileSelect}
+              acceptedFileTypes=".xlsx, .xls"
+              multiple={false}
+              uploadIcon={<Users className="h-12 w-12 text-green-600" />}
+              buttonText="Chọn tệp Excel"
+              dragText="Kéo và thả tệp NCC vào đây"
+            />
+          </div>
+        </CardContent>
+         <CardFooter className="justify-end">
+            <Button variant="link" size="sm" onClick={() => setIsVersionHistoryOpen(true)}>
+                <History className="mr-2 h-4 w-4"/>
+                Xem lịch sử cập nhật
+            </Button>
+        </CardFooter>
+      </Card>
+
+      {(isProcessingFiles || isFindingUnmappedItems) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{isProcessingFiles ? 'Đang xử lý tệp...' : 'Đang tìm và đối chiếu mã...'}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-center p-8">
+             <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          </CardContent>
+        </Card>
+      )}
+      
+      {!isProcessingFiles && !isFindingUnmappedItems && unmappedSuppliers.size > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Xử lý Nhà cung cấp cần bổ sung ({unmappedSuppliers.size})</CardTitle>
+            <CardDescription>
+              Các nhà cung cấp này được tìm thấy trong hóa đơn nhưng chưa có trong danh mục hoặc thiếu mã.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <UnmappedSupplierTable 
+              suppliers={Array.from(unmappedSuppliers.values())}
+              onUpdate={handleUpdateUnmappedSupplier}
+              supplierMapping={supplierMapping}
+            />
+          </CardContent>
+          <CardFooter>
+            <Button onClick={handleConfirmUnmappedSuppliers} className="ml-auto">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Lưu thông tin NCC
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
+
+      {!isProcessingFiles && !isFindingUnmappedItems && currentUnmappedList.length > 0 && (
+        <Card>
+            <CardHeader>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex-1">
+                        <CardTitle>Xử lý mã chưa được ánh xạ ({currentUnmappedList.length})</CardTitle>
+                        <CardDescription className="mt-1">
+                            Các mã hàng này chưa có trong danh mục. Hãy điền thông tin và cập nhật.
+                        </CardDescription>
+                    </div>
+                     <div className="relative w-full sm:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Tìm kiếm mã hoặc tên..."
+                            value={unmappedDataSearch}
+                            onChange={(e) => setUnmappedDataSearch(e.target.value)}
+                            className="pl-10"
+                        />
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <ManualMappingTable 
+                    items={currentUnmappedList}
+                    onUpdate={handleUpdateUnmappedItem}
+                    onIgnore={handleIgnoreUnmappedItem}
+                    selectedId={selectedUnmappedId}
+                    onSelectRow={setSelectedUnmappedId}
+                    masterCatalog={masterCatalog}
+                />
+            </CardContent>
+            <CardFooter>
+                <Button onClick={handleConfirmManualMappings} className="ml-auto">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Cập nhật danh mục
+                </Button>
+            </CardFooter>
+        </Card>
+      )}
+
+      {!isProcessingFiles && !isFindingUnmappedItems && currentAlreadyMappedList.length > 0 && (
+        <Card>
+            <CardHeader>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex-1">
+                        <CardTitle>Các mã đã được ánh xạ ({currentAlreadyMappedList.length})</CardTitle>
+                        <CardDescription className="mt-1">
+                           Các mã này đã được tự động ánh xạ. Bạn có thể xem lại và chỉnh sửa nếu cần.
+                        </CardDescription>
+                    </div>
+                     <div className="relative w-full sm:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Tìm kiếm mã hoặc tên..."
+                            value={alreadyMappedSearch}
+                            onChange={(e) => setAlreadyMappedSearch(e.target.value)}
+                            className="pl-10"
+                        />
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <AlreadyMappedTable
+                    items={currentAlreadyMappedList}
+                    onUpdate={handleUpdateAlreadyMappedItem}
+                    onUnmap={handleUnmapItem}
+                    masterCatalog={masterCatalog}
+                />
+            </CardContent>
+             <CardFooter>
+                <Button onClick={() => {
+                  const updates = Array.from(alreadyMappedItems.values());
+                  const batch = writeBatch(firestore);
+                  updates.forEach(item => {
+                    const docRef = doc(firestore, 'users', currentUser!.id, 'mappings', item.id);
+                    batch.set(docRef, item);
+                  });
+                  batch.commit().then(() => {
+                    toast({title: 'Đã lưu các thay đổi.'})
+                  }).catch(e => {
+                    toast({variant: 'destructive', title: 'Lỗi', description: 'Không thể lưu thay đổi.'})
+                  })
+                }} className="ml-auto">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Lưu các thay đổi
+                </Button>
+            </CardFooter>
+        </Card>
+      )}
+
+
+      {!isProcessingFiles && invoiceData.length > 0 && (
+        <Tabs defaultValue="mapped" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="summary">Thống kê hóa đơn</TabsTrigger>
+            <TabsTrigger value="comparison">Đối chiếu bảng kê</TabsTrigger>
+            <TabsTrigger value="mapped">Dữ liệu đã ánh xạ</TabsTrigger>
+            <TabsTrigger value="original">Dữ liệu gốc</TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary">
+            <InvoiceSummary data={invoiceData} />
+          </TabsContent>
+           <TabsContent value="comparison">
+            <ComparisonManager xmlInvoiceData={invoiceData} supplierMapping={supplierMapping} />
+          </TabsContent>
+          <TabsContent value="original">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex-1">
+                       <CardTitle>Dữ liệu gốc</CardTitle>
+                        <CardDescription>
+                          Tìm thấy {invoiceData.length} mặt hàng từ các tệp XML.
+                        </CardDescription>
+                    </div>
+                    <div className="relative w-full sm:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Tìm kiếm trong bảng..."
+                            value={originalDataSearch}
+                            onChange={(e) => setOriginalDataSearch(e.target.value)}
+                            className="pl-10"
+                        />
+                    </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <InvoiceTable data={invoiceData} searchTerm={originalDataSearch} />
+              </CardContent>
+              <CardFooter>
+                <Button onClick={() => handleExport(invoiceData, 'goc')} className="ml-auto bg-gray-500 hover:bg-gray-600">
+                  <Download className="mr-2 h-4 w-4" />
+                  Xuất dữ liệu gốc
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+          <TabsContent value="mapped">
+            <Card className="shadow-lg">
+              <CardHeader>
+                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex-1">
+                        <CardTitle>Dữ liệu đã ánh xạ</CardTitle>
+                        <CardDescription>
+                          Hiển thị {mappedData.length} mặt hàng sau khi áp dụng {mapping.size} quy tắc ánh xạ.
+                        </CardDescription>
+                    </div>
+                    <div className="relative w-full sm:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Tìm kiếm trong bảng..."
+                            value={mappedDataSearch}
+                            onChange={(e) => setMappedDataSearch(e.target.value)}
+                            className="pl-10"
+                        />
+                    </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <InvoiceTable data={mappedData} searchTerm={mappedDataSearch} />
+              </CardContent>
+              <CardFooter>
+                <div className="ml-auto flex gap-2">
+                    <Button onClick={() => handleExport(mappedData, 'anhxa')} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                      <Download className="mr-2 h-4 w-4" />
+                      Xuất dữ liệu đã ánh xạ
+                    </Button>
+                    <Button onClick={() => handleExportViettel(mappedData)} variant="destructive">
+                      <Download className="mr-2 h-4 w-4" />
+                      Xuất mẫu Viettel
+                    </Button>
+                </div>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {invoiceData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Hoàn tất và Lưu trữ</CardTitle>
+            <CardDescription>
+              Sau khi đã ánh xạ tất cả các mã và nhà cung cấp, hãy lưu kết quả vào lịch sử nhập hàng.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Button 
+              onClick={handleSaveSession}
+              disabled={!canSaveSession || isSavingSession}
+            >
+              {isSavingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Hoàn tất & Lưu vào Lịch sử
+            </Button>
+            {!canSaveSession && (
+              <p className="ml-4 text-sm text-destructive">
+                Vui lòng xử lý hết các mục chưa ánh xạ và nhà cung cấp cần bổ sung trước khi lưu.
+              </p>
+            )}
+          </CardFooter>
+        </Card>
+      )}
+    </div>
+  );
+}

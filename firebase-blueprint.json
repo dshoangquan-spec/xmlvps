@@ -1,0 +1,548 @@
+
+{
+  "entities": {
+    "ImportSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ImportSession",
+      "description": "Represents a single event of importing one or more XML files.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the import session."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who performed the import."
+        },
+        "importDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the import occurred."
+        },
+        "fileNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "A list of the XML file names included in this session."
+        },
+        "invoiceCount": {
+          "type": "number",
+          "description": "Total number of unique invoices processed in this session."
+        },
+        "itemCount": {
+          "type": "number",
+          "description": "Total number of invoice line items processed in this session."
+        }
+      },
+      "required": ["id", "userId", "importDate", "fileNames", "invoiceCount", "itemCount"]
+    },
+    "Invoice": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Invoice",
+      "type": "object",
+      "description": "Represents the header information of an invoice extracted from an XML file.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the invoice, typically the invoice number."
+        },
+        "importSessionId": {
+          "type": "string",
+          "description": "Reference to the ImportSession this invoice belongs to."
+        },
+        "provider": {
+          "type": "string",
+          "description": "The provider of the invoice (e.g., VNPT, Viettel, MeInvoice)."
+        },
+        "invoiceDate": {
+          "type": "string",
+          "description": "The date of the invoice."
+        },
+        "sellerName": {
+          "type": "string",
+          "description": "The name of the seller (supplier)."
+        },
+        "sellerTaxCode": {
+          "type": "string",
+          "description": "The tax code of the seller."
+        },
+        "sellerAddress": {
+          "type": "string",
+          "description": "The address of the seller."
+        },
+        "buyerName": {
+          "type": "string",
+          "description": "The name of the buyer (pharmacy)."
+        },
+        "fileName": {
+          "type": "string",
+          "description": "The name of the XML file the invoice was extracted from."
+        },
+        "portalLink": {
+          "type": "string",
+          "description": "Link to access the invoice on the provider's portal, if available."
+        },
+        "accessCode": {
+          "type": "string",
+          "description": "Access code for the invoice on the provider's portal, if available."
+        }
+      },
+      "required": [
+        "id",
+        "importSessionId",
+        "provider",
+        "invoiceDate",
+        "sellerName",
+        "sellerTaxCode",
+        "buyerName",
+        "fileName"
+      ]
+    },
+    "InvoiceItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "InvoiceItem",
+      "type": "object",
+      "description": "Represents an item within an invoice.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the invoice item."
+        },
+        "invoiceId": {
+          "type": "string",
+          "description": "Reference to Invoice. (Relationship: Invoice 1:N InvoiceItem)"
+        },
+        "lineNumber": {
+          "type": "string",
+          "description": "The line number of the item in the invoice."
+        },
+        "itemCode": {
+          "type": "string",
+          "description": "The code of the item."
+        },
+        "itemName": {
+          "type": "string",
+          "description": "The name of the item."
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement for the item."
+        },
+        "quantity": {
+          "type": "string",
+          "description": "The quantity of the item."
+        },
+        "unitPrice": {
+          "type": "string",
+          "description": "The unit price of the item."
+        },
+        "totalAmount": {
+          "type": "string",
+          "description": "The total amount for the item."
+        },
+        "taxRate": {
+          "type": "string",
+          "description": "The tax rate applied to the item."
+        },
+        "lotNumber": {
+          "type": "string",
+          "description": "The lot number of the item."
+        },
+        "expirationDate": {
+          "type": "string",
+          "description": "The expiration date of the item."
+        }
+      },
+      "required": [
+        "id",
+        "invoiceId",
+        "lineNumber",
+        "itemCode",
+        "itemName",
+        "unit",
+        "quantity",
+        "unitPrice",
+        "totalAmount",
+        "taxRate"
+      ]
+    },
+     "CommunityMapping": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "CommunityMapping",
+      "description": "A shared mapping rule suggested by the community of users.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Composite key: {supplierTaxCode}-{originalCode} or just {originalCode}" },
+        "originalCode": { "type": "string" },
+        "supplierTaxCode": { "type": "string" },
+        "newCode": { "type": "string", "description": "The internal code suggested by the user who contributed this mapping." },
+        "newName": { "type": "string" },
+        "newUnit": { "type": "string" },
+        "conversionRate": { "type": "number" },
+        "updateCount": { "type": "number", "description": "How many times this mapping has been confirmed or updated." },
+        "masterCatalogId": { "type": "string", "description": "The linked ID from the master product catalog. Editable by Admin." }
+      },
+      "required": ["id", "originalCode", "newCode", "newName", "newUnit", "conversionRate"]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "description": "A user of the application.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "fullName": {
+            "type": "string"
+        },
+        "role": {
+            "type": "string",
+            "enum": ["ADMIN", "USER"],
+            "description": "The role of the user, determining their access level."
+        },
+        "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The timestamp when the user account was created."
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "password",
+        "fullName",
+        "role", 
+        "createdAt"
+      ]
+    },
+     "MasterCatalogItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "MasterCatalogItem",
+      "description": "A single item in the shared master product catalog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique product code (Mã SP), used as document ID" },
+        "productName": { "type": "string", "description": "Tên sản phẩm" },
+        "activeIngredient": { "type": "string", "description": "Hoạt chất" },
+        "concentration": { "type": "string", "description": "Nồng độ/Hàm lượng" },
+        "registrationNumber": { "type": "string", "description": "Số đăng ký" },
+        "packaging": { "type": "string", "description": "Quy cách đóng gói" },
+        "unit": { "type": "string", "description": "Đơn vị tính gốc" },
+        "smallestUnit": { "type": "string", "description": "Đơn vị tính nhỏ nhất (sau quy đổi)" },
+        "conversionRate": { "type": "number", "description": "Hệ số quy đổi từ ĐVT gốc sang ĐVT nhỏ nhất" }
+      },
+      "required": ["id", "productName", "unit"]
+    },
+    "PharmacyAccount": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PharmacyAccount",
+      "description": "Stores pharmacy account information, including credentials for various services.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the pharmacy account."
+        },
+        "pharmacyName": {
+          "type": "string",
+          "description": "Tên nhà thuốc."
+        },
+        "representative": {
+          "type": "string",
+          "description": "Người đại diện."
+        },
+        "usageStartDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Ngày bắt đầu sử dụng phần mềm."
+        },
+        "softwareFee": {
+          "type": "number",
+          "description": "Fee for software usage."
+        },
+        "softwareFeeDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date when the software fee was collected."
+        },
+        "pmName": {
+          "type": "string",
+          "description": "Tên phần mềm quản lý."
+        },
+        "pmUser": {
+          "type": "string",
+          "description": "Tên đăng nhập phần mềm."
+        },
+        "pmPass": {
+          "type": "string",
+          "description": "Mật khẩu phần mềm."
+        },
+        "invoiceProviderName": {
+          "type": "string",
+          "description": "Tên nhà cung cấp hóa đơn điện tử."
+        },
+        "invoiceUser": {
+          "type": "string",
+          "description": "Tên đăng nhập HĐĐT."
+        },
+        "invoicePass": {
+          "type": "string",
+          "description": "Mật khẩu HĐĐT."
+        },
+        "invoiceLink": {
+          "type": "string",
+          "description": "Link tra cứu HĐĐT."
+        },
+        "taxUser": {
+          "type": "string",
+          "description": "Tài khoản thuế."
+        },
+        "taxPass": {
+          "type": "string",
+          "description": "Mật khẩu thuế."
+        }
+      },
+      "required": ["id", "pharmacyName"]
+    },
+    "FeeRecord": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "FeeRecord",
+      "description": "Stores monthly fee information for a pharmacy account.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Document ID, typically in 'YYYY-MM' format."
+        },
+        "month": {
+          "type": "string",
+          "description": "The month the fee applies to, format 'YYYY-MM'."
+        },
+        "taxReportFee": {
+          "type": "number",
+          "description": "Fee for tax reporting service."
+        },
+        "invoiceImportFee": {
+          "type": "number",
+          "description": "Fee for invoice import service."
+        },
+        "invoiceExportFee": {
+          "type": "number",
+          "description": "Fee for invoice export service."
+        },
+        "totalFee": {
+          "type": "number",
+          "description": "The total calculated fee for the month."
+        },
+        "isPaid": {
+          "type": "boolean",
+          "description": "Status indicating if the fee has been paid."
+        }
+      },
+      "required": ["id", "month", "taxReportFee", "invoiceImportFee", "invoiceExportFee", "totalFee", "isPaid"]
+    },
+    "TaxReport": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TaxReport",
+      "description": "Represents a single quarterly tax report for a pharmacy account.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Document ID, in the format 'YYYY-Q#'." },
+        "pharmacyAccountId": { "type": "string" },
+        "userId": { "type": "string" },
+        "year": { "type": "number" },
+        "quarter": { "type": "number" },
+        "openingBalance": { "type": "number" },
+        "purchaseValue": { "type": "number" },
+        "revenue": { "type": "number" },
+        "costOfGoods": { "type": "number" },
+        "closingBalance": { "type": "number" },
+        "vatPayable": { "type": "number" },
+        "pitPayable": { "type": "number" },
+        "status": { "type": "string", "enum": ["DRAFT", "SUBMITTED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "pharmacyAccountId", "userId", "year", "quarter"]
+    },
+    "Version": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Version",
+      "description": "Represents a single version of the application.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the version."
+        },
+        "versionNumber": {
+          "type": "string",
+          "description": "The version number, e.g., '1.1.0'."
+        },
+        "releaseDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date the version was released."
+        },
+        "published": {
+          "type": "boolean",
+          "description": "Whether the version is visible to users."
+        }
+      },
+      "required": ["id", "versionNumber", "releaseDate", "published"]
+    },
+    "Change": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Change",
+      "description": "Represents a single change log item within a version.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the change."
+        },
+        "versionId": {
+          "type": "string",
+          "description": "The ID of the version this change belongs to."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["new", "improvement", "fix"],
+          "description": "The type of change."
+        },
+        "text": {
+          "type": "string",
+          "description": "The description of the change."
+        },
+        "adminOnly": {
+          "type": "boolean",
+          "description": "If true, this change is only visible to admin users."
+        },
+        "order": {
+          "type": "number",
+          "description": "A number to control the display order of changes."
+        }
+      },
+      "required": ["id", "versionId", "type", "text", "adminOnly", "order"]
+    }
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": { "$ref": "#/entities/User" },
+          "description": "Stores user account information."
+        }
+      },
+      {
+        "path": "/users/{userId}/mappings/{mappingId}",
+        "definition": {
+          "entityName": "Mapping",
+          "schema": { "$ref": "#/entities/Mapping" },
+          "description": "Stores user-specific item code mappings."
+        }
+      },
+       {
+        "path": "/community_mappings/{mappingId}",
+        "definition": {
+          "entityName": "CommunityMapping",
+          "schema": { "$ref": "#/entities/CommunityMapping" },
+          "description": "Stores shared mapping rules from all users to provide suggestions."
+        }
+      },
+      {
+        "path": "/users/{userId}/suppliers/{supplierId}",
+        "definition": {
+          "entityName": "Supplier",
+          "schema": { "$ref": "#/entities/Supplier" },
+          "description": "Stores user-specific supplier information."
+        }
+      },
+      {
+        "path": "/master_catalog/{itemId}",
+        "definition": {
+          "entityName": "MasterCatalogItem",
+          "schema": { "$ref": "#/entities/MasterCatalogItem" },
+          "description": "Stores the shared master product catalog."
+        }
+      },
+      {
+        "path": "/users/{userId}/pharmacy_accounts/{accountId}",
+        "definition": {
+          "entityName": "PharmacyAccount",
+          "schema": { "$ref": "#/entities/PharmacyAccount" },
+          "description": "Stores pharmacy account credentials and information."
+        }
+      },
+       {
+        "path": "/users/{userId}/pharmacy_accounts/{accountId}/fee_records/{feeRecordId}",
+        "definition": {
+          "entityName": "FeeRecord",
+          "schema": { "$ref": "#/entities/FeeRecord" },
+          "description": "Stores monthly fee records for a pharmacy account."
+        }
+      },
+       {
+        "path": "/users/{userId}/pharmacy_accounts/{accountId}/tax_reports/{reportId}",
+        "definition": {
+          "entityName": "TaxReport",
+          "schema": { "$ref": "#/entities/TaxReport" },
+          "description": "Stores quarterly tax reports for a pharmacy account."
+        }
+      },
+      {
+        "path": "/users/{userId}/import_sessions/{sessionId}",
+        "definition": {
+          "entityName": "ImportSession",
+          "schema": { "$ref": "#/entities/ImportSession" },
+          "description": "Stores metadata for each file import session."
+        }
+      },
+      {
+        "path": "/users/{userId}/invoices/{invoiceId}",
+        "definition": {
+          "entityName": "Invoice",
+          "schema": { "$ref": "#/entities/Invoice" },
+          "description": "Stores header information for each processed invoice."
+        }
+      },
+      {
+        "path": "/users/{userId}/invoices/{invoiceId}/items/{itemId}",
+        "definition": {
+          "entityName": "InvoiceItem",
+          "schema": { "$ref": "#/entities/InvoiceItem" },
+          "description": "Stores line items for each processed invoice."
+        }
+      },
+      {
+        "path": "/versions/{versionId}",
+        "definition": {
+          "entityName": "Version",
+          "schema": { "$ref": "#/entities/Version" },
+          "description": "Stores application version information."
+        }
+      },
+      {
+        "path": "/versions/{versionId}/changes/{changeId}",
+        "definition": {
+          "entityName": "Change",
+          "schema": { "$ref": "#/entities/Change" },
+          "description": "Stores individual change logs for a specific version."
+        }
+      }
+    ]
+  }
+}
+
+    

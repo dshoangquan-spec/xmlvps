@@ -1,0 +1,8 @@
+{
+  "name": "XML Invoice Processor",
+  "description": "Parse XML invoices, map products to a master catalog, and export reports to Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

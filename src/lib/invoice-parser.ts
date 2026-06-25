@@ -99,6 +99,29 @@ function splitCombinedSoloHsdd(val: string): [string, string] {
     return [val, ""];
 }
 
+function postProcessRows(rows: InvoiceItem[]): InvoiceItem[] {
+    for (let i = 1; i < rows.length; i++) {
+        const currentRow = rows[i];
+        const prevRow = rows[i - 1];
+        
+        const isInfoOrDiscountRow = currentRow["Số lượng"] === 0 || 
+                                    currentRow["Tên hàng hóa"].trim() === "" || 
+                                    currentRow["Tên hàng hóa"].trim() === "()" ||
+                                    currentRow["ĐVT"].toLowerCase().includes("ck") || 
+                                    currentRow["Tên hàng hóa"].toLowerCase().includes("chiết khấu");
+                                    
+        if (isInfoOrDiscountRow) {
+            if (currentRow["Số lô"] && currentRow["Số lô"] !== "Null" && (!prevRow["Số lô"] || prevRow["Số lô"] === "Null")) {
+                prevRow["Số lô"] = currentRow["Số lô"];
+            }
+            if (currentRow["Hạn dùng"] && (!prevRow["Hạn dùng"] || prevRow["Hạn dùng"] === "")) {
+                prevRow["Hạn dùng"] = currentRow["Hạn dùng"];
+            }
+        }
+    }
+    return rows;
+}
+
 function extractSoloHsdd(item: Element): [string, string] {
     const ttinMap = new Map<string, string>();
     const allTins = Array.from(item.querySelectorAll("TTin")); 
@@ -288,7 +311,7 @@ function processVnptOrMeInvoice(xmlDoc: Document, fileName: string): InvoiceItem
         });
     }
 
-    return rows;
+    return postProcessRows(rows);
 }
 
 function processViettel(xmlDoc: Document, fileName: string): InvoiceItem[] {
@@ -349,7 +372,7 @@ function processViettel(xmlDoc: Document, fileName: string): InvoiceItem[] {
             "Chiết khấu dòng": parseFloat(getText(item, "DiscountAmount")) || 0,
         });
     }
-    return rows;
+    return postProcessRows(rows);
 }
 
 function extractPortalFkey(soup: Document): [string, string] {

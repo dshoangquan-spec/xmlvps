@@ -1,6 +1,6 @@
 # Chương trình Quản lý Nhập hàng bằng XML (Next.js 16 + MCP)
 
-Ứng dụng hỗ trợ phân tích hóa đơn XML, hỗ trợ giải nén file ZIP tự động, đối chiếu bảng kê và xuất dữ liệu ra Excel theo mẫu.
+Xử lý các file xml của thuế và ứng dụng hỗ trợ phân tích hóa đơn XML, hỗ trợ giải nén file ZIP tự động, đối chiếu bảng kê và xuất dữ liệu ra Excel theo mẫu.
 
 ## Các tính năng nổi bật:
 - **Xử lý tệp ZIP**: Tự động giải nén và lấy file XML hóa đơn.
@@ -36,7 +36,6 @@ Nếu anh muốn đưa mã nguồn này lên GitHub, hãy mở **Terminal** tron
 5. **Push code**:
    ```bash
    git branch -M main
-   git push -u origin main
    ```
 
 ---

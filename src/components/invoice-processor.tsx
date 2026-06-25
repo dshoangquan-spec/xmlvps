@@ -98,6 +98,7 @@ export default function InvoiceProcessor() {
   const [mappedDataSearch, setMappedDataSearch] = useState('');
   const [unmappedDataSearch, setUnmappedDataSearch] = useState('');
   const [alreadyMappedSearch, setAlreadyMappedSearch] = useState('');
+  const [warningDataSearch, setWarningDataSearch] = useState('');
   
   // State for ManualMappingTable
   const [selectedUnmappedId, setSelectedUnmappedId] = useState<string | null>(null);
@@ -183,6 +184,16 @@ export default function InvoiceProcessor() {
       return item;
     });
   }, [invoiceData, mapping]);
+
+  const warningData = useMemo(() => {
+    return invoiceData.filter(item => {
+      const quantity = item["Số lượng"];
+      const isProduct = quantity > 0;
+      const missingSolo = !item["Số lô"] || item["Số lô"] === "Null" || item["Số lô"].trim() === "";
+      const missingHsdd = !item["Hạn dùng"] || item["Hạn dùng"].trim() === "";
+      return isProduct && (missingSolo || missingHsdd);
+    });
+  }, [invoiceData]);
 
  const findUnmappedItems = useCallback(async (invoices: ParsedInvoiceItem[], currentMapping: Map<string, Mapping>) => {
     if (!currentUser || !firestore) return;
@@ -1606,11 +1617,20 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
 
       {!isProcessingFiles && invoiceData.length > 0 && (
         <Tabs defaultValue="mapped" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="summary">Thống kê hóa đơn</TabsTrigger>
             <TabsTrigger value="comparison">Đối chiếu bảng kê</TabsTrigger>
             <TabsTrigger value="mapped">Dữ liệu đã ánh xạ</TabsTrigger>
             <TabsTrigger value="original">Dữ liệu gốc</TabsTrigger>
+            <TabsTrigger value="warning" className="relative flex items-center justify-center gap-1.5 text-destructive data-[state=active]:bg-destructive/10">
+              <AlertTriangle className="h-4 w-4" />
+              Cảnh báo
+              {warningData.length > 0 && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground animate-pulse">
+                  {warningData.length}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="summary">
             <InvoiceSummary data={invoiceData} />
@@ -1686,6 +1706,35 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
                     </Button>
                 </div>
               </CardFooter>
+            </Card>
+          </TabsContent>
+          <TabsContent value="warning">
+            <Card className="shadow-lg border-destructive/20">
+              <CardHeader className="bg-destructive/5 border-b border-destructive/10">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex-1">
+                       <CardTitle className="text-destructive flex items-center gap-2">
+                         <AlertTriangle className="h-5 w-5" />
+                         Cảnh báo số lô / hạn dùng
+                       </CardTitle>
+                        <CardDescription>
+                          Hiển thị danh sách các sản phẩm (số lượng &gt; 0) chưa đọc được Số lô hoặc Hạn dùng từ tệp XML.
+                        </CardDescription>
+                    </div>
+                    <div className="relative w-full sm:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                            placeholder="Tìm kiếm mặt hàng..."
+                            value={warningDataSearch}
+                            onChange={(e) => setWarningDataSearch(e.target.value)}
+                            className="pl-10"
+                        />
+                    </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <InvoiceTable data={warningData} searchTerm={warningDataSearch} />
+              </CardContent>
             </Card>
           </TabsContent>
         </Tabs>

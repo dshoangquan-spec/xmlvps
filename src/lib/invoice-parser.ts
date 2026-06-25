@@ -2,7 +2,7 @@
 import { format, parse, isValid } from 'date-fns';
 import type { InvoiceItem } from '@/types/invoice';
 
-const getText = (element: Element | null, selector: string) => element?.querySelector(selector)?.textContent?.trim() ?? '';
+const getText = (element: Element | Document | null, selector: string) => element?.querySelector(selector)?.textContent?.trim() ?? '';
 const sanitizeDocId = (id: string) => id.replace(/\//g, '-');
 
 function detectProvider(xmlDoc: Document): 'VNPT_or_MeInvoice' | 'Viettel' | 'Unknown' {
@@ -66,6 +66,39 @@ function formatHsdd(hsdd: string): string {
     return hsdd; 
 }
 
+function splitCombinedSoloHsdd(val: string): [string, string] {
+    val = val.trim();
+    // Try to split by common separators first: space-hyphen-space, semicolon, slash, vertical bar, tab
+    const separators = [/\s+-\s+/, /\s+–\s+/, /;/, /\|/, /\s+/];
+    for (const sep of separators) {
+        const parts = val.split(sep).map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+            return [parts[0], parts[1]];
+        }
+    }
+
+    // If it's a single hyphen or dash/en-dash, e.g. "131225-29.12.2028" or "131225–29.12.2028"
+    const dashIndex = val.search(/[-–]/);
+    if (dashIndex !== -1) {
+        const parts = val.split(/[-–]/);
+        if (parts.length === 2) {
+            return [parts[0].trim(), parts[1].trim()];
+        } else if (parts.length > 2) {
+            // Check if it ends with yyyy-mm-dd (last 3 parts)
+            const lastThree = parts.slice(-3);
+            if (lastThree.every(p => /^\d+$/.test(p.trim()))) {
+                const datePart = lastThree.join('-');
+                const lotPart = parts.slice(0, -3).join('-');
+                return [lotPart.trim(), datePart.trim()];
+            }
+            // Otherwise, split at the first dash
+            return [val.slice(0, dashIndex).trim(), val.slice(dashIndex + 1).trim()];
+        }
+    }
+
+    return [val, ""];
+}
+
 function extractSoloHsdd(item: Element): [string, string] {
     const ttinMap = new Map<string, string>();
     const allTins = Array.from(item.querySelectorAll("TTin")); 
@@ -84,6 +117,20 @@ function extractSoloHsdd(item: Element): [string, string] {
 
         if (key && val && !ttinMap.has(key)) {
             ttinMap.set(key, val);
+            
+            // Check if key is a combined field containing both batch (số lô) and expiry (hạn dùng) info
+            const keyNormalized = key.replace(/\s+/g, '');
+            const isCombined = (keyNormalized.includes("sốlô") || keyNormalized.includes("solo") || keyNormalized.includes("lô")) && 
+                               (keyNormalized.includes("hạndùng") || keyNormalized.includes("handung") || keyNormalized.includes("hsd"));
+            if (isCombined) {
+                const [splitSolo, splitHsdd] = splitCombinedSoloHsdd(val);
+                if (splitSolo && !ttinMap.has('slo_combined')) {
+                    ttinMap.set('slo_combined', splitSolo);
+                }
+                if (splitHsdd && !ttinMap.has('hdung_combined')) {
+                    ttinMap.set('hdung_combined', splitHsdd);
+                }
+            }
         }
     }
 
@@ -91,7 +138,7 @@ function extractSoloHsdd(item: Element): [string, string] {
     let hsdd = "";
 
     // Ưu tiên các trường External2 cho số lô và External3 cho hạn dùng
-    const lotKeywords = ["external2", "slo", "lotno", "số lô", "so lo", "so_lo", "extra1", "extra01", "lot", "batchno", "customfield1detail", "cột 0"];
+    const lotKeywords = ["external2", "slo", "lotno", "số lô", "so lo", "so_lo", "extra1", "extra01", "lot", "batchno", "customfield1detail", "cột 0", "slo_combined"];
     for (const k of lotKeywords) {
         if (ttinMap.has(k)) {
             const foundVal = ttinMap.get(k)!;
@@ -106,7 +153,7 @@ function extractSoloHsdd(item: Element): [string, string] {
         }
     }
     
-    const expKeywords = ["external3", "hdung", "hạn dùng", "hsd", "han_dung", "extra2", "expiry", "expirydate", "expiredate", "customfield2detail", "extra02", "cột 1"];
+    const expKeywords = ["external3", "hdung", "hạn dùng", "hsd", "han_dung", "extra2", "expiry", "expirydate", "expiredate", "customfield2detail", "extra02", "cột 1", "hdung_combined"];
     for (const k of expKeywords) {
         if (ttinMap.has(k)) {
             const foundVal = ttinMap.get(k)!;

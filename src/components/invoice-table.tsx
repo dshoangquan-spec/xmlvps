@@ -50,7 +50,7 @@ export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50 }: Invoi
   const hasMappedData = data.some(item => item['Mã hàng (gốc)']);
   
   const baseHeaders: (keyof InvoiceItem)[] = [
-    'Mã hàng', 'Tên hàng hóa', 'ĐVT', 'Số lượng', 'Đơn giá', 'Thành tiền'
+    'Mã hàng', 'Tên hàng hóa', 'ĐVT', 'Số lượng', 'Đơn giá', 'Thành tiền', 'Số lô', 'Hạn dùng'
   ];
 
   let headers: (keyof InvoiceItem)[] = [...baseHeaders];
@@ -64,13 +64,15 @@ export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50 }: Invoi
 
   const getHeaderClass = (header: keyof InvoiceItem) => {
     switch (header) {
-      case 'Mã hàng (gốc)': return 'w-[15%]';
-      case 'Mã hàng': return 'w-[15%]';
-      case 'Tên hàng hóa': return 'w-[35%]';
-      case 'ĐVT': return 'w-[10%]';
-      case 'Số lượng': return 'w-[10%] text-right';
-      case 'Đơn giá': return 'w-[15%] text-right';
-      case 'Thành tiền': return 'w-[15%] text-right';
+      case 'Mã hàng (gốc)': return 'w-[12%]';
+      case 'Mã hàng': return 'w-[12%]';
+      case 'Tên hàng hóa': return 'w-[25%]';
+      case 'ĐVT': return 'w-[8%]';
+      case 'Số lượng': return 'w-[8%] text-right';
+      case 'Đơn giá': return 'w-[10%] text-right';
+      case 'Thành tiền': return 'w-[12%] text-right';
+      case 'Số lô': return 'w-[13%]';
+      case 'Hạn dùng': return 'w-[12%]';
       default: return 'w-auto';
     }
   };

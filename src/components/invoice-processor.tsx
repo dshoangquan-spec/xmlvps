@@ -29,9 +29,9 @@ import { processMappingFile, type ColumnMap as MappingColumnMap } from '@/lib/ma
 import { processSupplierFile, type ColumnMap as SupplierColumnMap } from '@/lib/supplier-parser';
 
 import type { InvoiceItem as ParsedInvoiceItem } from '@/types/invoice';
-import type { Mapping, Supplier, User as CustomUser, MasterCatalogItem, Invoice, InvoiceItem, CommunityMapping, ProcessingItem, Version } from '@/types/firebase';
+import type { Mapping, Supplier, User as CustomUser, MasterCatalogItem, Invoice, InvoiceItem, CommunityMapping, ProcessingItem, Version, ImportSession } from '@/types/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Loader2, FileUp, RefreshCw, BookMarked, Search, Users, LogOut, ShieldCheck, KeyRound, Database, FileText, Save, Archive, LayoutDashboard, Library, History, FilePieChart, AlertTriangle } from 'lucide-react';
+import { Download, Loader2, FileUp, RefreshCw, BookMarked, Search, Users, LogOut, ShieldCheck, KeyRound, Database, FileText, Save, Archive, LayoutDashboard, Library, History, FilePieChart, AlertTriangle, Sun, Moon } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { Avatar, AvatarFallback } from './ui/avatar';
@@ -64,6 +64,30 @@ const sanitizeDocId = (id: string) => id.replace(/\//g, '-');
 
 
 export default function InvoiceProcessor() {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const isDark = localStorage.getItem('theme') === 'dark' || 
+                   (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    setIsDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newMode = !isDarkMode;
+    setIsDarkMode(newMode);
+    if (newMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  };
   const [invoiceData, setInvoiceData] = useState<ParsedInvoiceItem[]>([]);
   const [unmappedItems, setUnmappedItems] = useState<Map<string, ProcessingItem>>(new Map());
   const [alreadyMappedItems, setAlreadyMappedItems] = useState<Map<string, ProcessingItem>>(new Map());
@@ -1283,7 +1307,91 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
   }
 
   return (
-    <div className="space-y-8">
+    <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300 pb-16">
+      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-8">
+          <div className="flex items-center gap-3">
+             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg shadow-md">
+               X
+             </div>
+             <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+               XML Invoice Pro
+             </span>
+          </div>
+          
+          <div className="flex items-center gap-4">
+             <nav className="hidden md:flex items-center gap-2">
+                {currentUser.role === 'ADMIN' && (
+                    <Link href="/admin">
+                        <Button variant="ghost" size="sm" className="font-medium">
+                            <ShieldCheck className="mr-1.5 h-4 w-4 text-primary" />
+                            Quản trị
+                        </Button>
+                    </Link>
+                )}
+                 <Link href="/accounts">
+                    <Button variant="ghost" size="sm" className="font-medium">
+                        <FileText className="mr-1.5 h-4 w-4 text-primary" />
+                        Tài khoản
+                    </Button>
+                </Link>
+                <Link href="/catalogs">
+                    <Button variant="ghost" size="sm" className="font-medium">
+                        <Database className="mr-1.5 h-4 w-4 text-primary" />
+                        Danh mục
+                    </Button>
+                </Link>
+                 <Link href="/data">
+                    <Button variant="ghost" size="sm" className="font-medium">
+                        <Archive className="mr-1.5 h-4 w-4 text-primary" />
+                        Dữ liệu
+                    </Button>
+                </Link>
+                <Link href="/dashboard">
+                    <Button variant="ghost" size="sm" className="font-medium">
+                        <LayoutDashboard className="mr-1.5 h-4 w-4 text-primary" />
+                        Dashboard
+                    </Button>
+                </Link>
+                 <Link href="/tax-report">
+                    <Button variant="ghost" size="sm" className="font-medium">
+                        <FilePieChart className="mr-1.5 h-4 w-4 text-primary" />
+                        Báo cáo Thuế
+                    </Button>
+                </Link>
+             </nav>
+             
+             <div className="h-6 w-px bg-border/60 hidden md:block"></div>
+             
+             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={toggleDarkMode}>
+               {isDarkMode ? <Sun className="h-4 w-4 text-yellow-500" /> : <Moon className="h-4 w-4 text-primary" />}
+             </Button>
+
+             {currentUser && (
+                <div className="flex items-center gap-3">
+                    <div className="text-right hidden sm:block">
+                        <p className="font-semibold text-sm leading-none">{currentUser.fullName || currentUser.username}</p>
+                        <p className='text-xs text-muted-foreground mt-1'>{currentUser.role}</p>
+                    </div>
+                    <Avatar className="h-8 w-8 shadow-sm">
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
+                          {(currentUser.fullName || currentUser.username || 'U').charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                    </Avatar>
+                     <Button variant="outline" size="sm" className="h-8 hidden lg:flex" onClick={() => setIsPasswordDialogOpen(true)}>
+                        <KeyRound className="mr-1.5 h-3.5 w-3.5"/>
+                        Đổi mật khẩu
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => handleAuthAction('logout')}>
+                        <LogOut className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-8 space-y-8 flex-1">
       {isMappingImportOpen && mappingFileData && (
         <MappingImportDialog
           isOpen={isMappingImportOpen}
@@ -1388,123 +1496,87 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
 
 
       {/* ---===[ KHU VỰC 1: TẢI TỆP ]===--- */}
-      <Card className="w-full shadow-lg">
-        <CardHeader className="text-center pb-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
-                 <div className="flex items-center gap-2 flex-wrap">
-                    {currentUser.role === 'ADMIN' && (
-                        <Link href="/admin">
-                            <Button variant="outline">
-                                <ShieldCheck className="mr-2 h-4 w-4" />
-                                Quản trị
-                            </Button>
-                        </Link>
-                    )}
-                     <Link href="/accounts">
-                        <Button variant="outline">
-                            <FileText className="mr-2 h-4 w-4" />
-                            Quản lý tài khoản
-                        </Button>
-                    </Link>
-                    <Link href="/catalogs">
-                        <Button variant="outline">
-                            <Database className="mr-2 h-4 w-4" />
-                            Danh mục
-                        </Button>
-                    </Link>
-                     <Link href="/data">
-                        <Button variant="outline">
-                            <Archive className="mr-2 h-4 w-4" />
-                            Dữ liệu đã nhập
-                        </Button>
-                    </Link>
-                    <Link href="/dashboard">
-                        <Button variant="outline">
-                            <LayoutDashboard className="mr-2 h-4 w-4" />
-                            Dashboard
-                        </Button>
-                    </Link>
-                     <Link href="/tax-report">
-                        <Button variant="outline">
-                            <FilePieChart className="mr-2 h-4 w-4" />
-                            Báo cáo Thuế
-                        </Button>
-                    </Link>
-                 </div>
-                 {currentUser && (
-                    <div className="flex items-center gap-2 self-start sm:ml-auto">
-                        <div className="text-right">
-                            <p className="font-semibold text-sm">{currentUser.fullName || currentUser.username}</p>
-                            <p className='text-xs text-muted-foreground'>{currentUser.role}</p>
-                        </div>
-                        <Avatar>
-                            <AvatarFallback>{(currentUser.fullName || currentUser.username || 'U').charAt(0).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                         <Button variant="outline" size="sm" onClick={() => setIsPasswordDialogOpen(true)}>
-                            <KeyRound className="mr-2 h-4 w-4"/>
-                            Đổi mật khẩu
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleAuthAction('logout')}>
-                            <LogOut className="h-5 w-5" />
-                        </Button>
-                    </div>
-                )}
-            </div>
-          <CardTitle className="text-3xl font-bold tracking-tight text-primary pt-4">
+      <Card className="w-full shadow-lg border-border/40 bg-card/50 backdrop-blur-sm">
+        <CardHeader className="text-center pb-6 border-b border-border/40">
+          <CardTitle className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary via-indigo-500 to-accent bg-clip-text text-transparent pt-4">
             CHƯƠNG TRÌNH QUẢN LÝ NHẬP HÀNG BẰNG XML
           </CardTitle>
-          <CardDescription className="text-lg">
-            Tải lên các tệp XML hóa đơn, tệp ánh xạ và tệp nhà cung cấp.
+          <CardDescription className="text-base text-muted-foreground mt-2">
+            Tải lên các tệp XML hóa đơn, tệp ánh xạ và tệp nhà cung cấp để bắt đầu đối chiếu dữ liệu.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-8 md:grid-cols-3">
-          <div>
-            <div className="flex justify-center items-center mb-4 h-9">
-                <h3 className="text-lg font-medium text-center">1. Tải tệp hóa đơn (XML/ZIP)</h3>
+        <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {/* Cột 1: Tải hóa đơn */}
+          <div className="flex flex-col bg-background/50 hover:bg-background/80 border border-border/60 hover:border-primary/50 rounded-xl p-5 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group h-full justify-between">
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-primary/10 text-primary">1</span>
+                <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider bg-secondary/60 px-2 py-0.5 rounded-full">Hóa đơn</span>
+              </div>
+              <h3 className="text-base font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">Hóa đơn XML/ZIP</h3>
+              <p className="text-xs text-muted-foreground">Tải lên tệp .xml lẻ hoặc tệp nén .zip chứa nhiều hóa đơn để hệ thống xử lý hàng loạt.</p>
             </div>
             <FileUploader
               id="xml-invoices"
               onFilesSelected={handleFileProcessing}
               acceptedFileTypes=".xml,.zip"
-              uploadIcon={<FileUp className="h-12 w-12 text-primary" />}
+              uploadIcon={<FileUp className="h-10 w-10 text-primary transition-transform duration-300 group-hover:scale-110" />}
               buttonText="Chọn tệp XML hoặc ZIP"
-              dragText="Kéo và thả tệp vào đây"
+              dragText="Kéo thả tệp XML/ZIP"
             />
           </div>
-          <div>
-            <div className="flex justify-center items-center mb-4 gap-4 h-9">
-              <h3 className="text-lg font-medium text-center">2. Tệp ánh xạ (Excel)</h3>
-              <Button variant="outline" size="sm" onClick={() => setIsCatalogOpen(true)}>
-                <BookMarked className="mr-2 h-4 w-4" />
-                Xem danh mục ({mapping.size})
-              </Button>
+
+          {/* Cột 2: Tệp ánh xạ */}
+          <div className="flex flex-col bg-background/50 hover:bg-background/80 border border-border/60 hover:border-accent/50 rounded-xl p-5 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group h-full justify-between">
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-accent/10 text-accent">2</span>
+                <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider bg-secondary/60 px-2 py-0.5 rounded-full">Danh mục</span>
+              </div>
+              <div className="flex justify-between items-start mb-1">
+                <h3 className="text-base font-semibold text-foreground group-hover:text-accent transition-colors">Tệp ánh xạ (Excel)</h3>
+                <Button variant="outline" size="sm" className="h-7 px-2 text-xs rounded-lg border-accent/20 hover:bg-accent/10 hover:text-accent shrink-0 gap-1" onClick={() => setIsCatalogOpen(true)}>
+                  <BookMarked className="h-3.5 w-3.5" />
+                  Xem ({mapping.size})
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Ánh xạ mã nhà cung cấp sang mã nội bộ, đối chiếu danh mục vật tư.</p>
             </div>
             <FileUploader
               id="mapping"
               onFilesSelected={handleMappingFileSelect}
               acceptedFileTypes=".xlsx, .xls"
               multiple={false}
-              uploadIcon={<FileUp className="h-12 w-12 text-accent" />}
+              uploadIcon={<FileUp className="h-10 w-10 text-accent transition-transform duration-300 group-hover:scale-110" />}
               buttonText="Chọn tệp Excel"
-              dragText="Kéo và thả tệp ánh xạ vào đây"
+              dragText="Kéo thả tệp ánh xạ"
             />
           </div>
-          <div>
-            <div className="flex justify-center items-center mb-4 gap-4 h-9">
-                <h3 className="text-lg font-medium text-center">3. Tệp nhà cung cấp (Excel)</h3>
-                <Button variant="outline" size="sm" onClick={() => setIsSupplierCatalogOpen(true)}>
-                    <Users className="mr-2 h-4 w-4" />
-                    Xem danh sách NCC ({supplierMapping.size})
+
+          {/* Cột 3: Tệp nhà cung cấp */}
+          <div className="flex flex-col bg-background/50 hover:bg-background/80 border border-border/60 hover:border-emerald-500/50 rounded-xl p-5 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group h-full justify-between">
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">3</span>
+                <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider bg-secondary/60 px-2 py-0.5 rounded-full">Đối tác</span>
+              </div>
+              <div className="flex justify-between items-start mb-1">
+                <h3 className="text-base font-semibold text-foreground group-hover:text-emerald-500 transition-colors">Tệp nhà cung cấp</h3>
+                <Button variant="outline" size="sm" className="h-7 px-2 text-xs rounded-lg border-emerald-500/20 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 shrink-0 gap-1" onClick={() => setIsSupplierCatalogOpen(true)}>
+                  <Users className="h-3.5 w-3.5" />
+                  Xem ({supplierMapping.size})
                 </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Tệp danh sách đối tác Excel chứa mã số thuế và thông tin định danh.</p>
             </div>
             <FileUploader 
               id="supplier"
               onFilesSelected={handleSupplierFileSelect}
               acceptedFileTypes=".xlsx, .xls"
               multiple={false}
-              uploadIcon={<Users className="h-12 w-12 text-green-600" />}
+              uploadIcon={<Users className="h-10 w-10 text-emerald-600 dark:text-emerald-400 transition-transform duration-300 group-hover:scale-110" />}
               buttonText="Chọn tệp Excel"
-              dragText="Kéo và thả tệp NCC vào đây"
+              dragText="Kéo thả tệp NCC"
             />
           </div>
         </CardContent>
@@ -1528,22 +1600,34 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
       )}
       
       {!isProcessingFiles && !isFindingUnmappedItems && unmappedSuppliers.size > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Xử lý Nhà cung cấp cần bổ sung ({unmappedSuppliers.size})</CardTitle>
-            <CardDescription>
-              Các nhà cung cấp này được tìm thấy trong hóa đơn nhưng chưa có trong danh mục hoặc thiếu mã.
-            </CardDescription>
+        <Card className="shadow-lg border-amber-500/20 bg-amber-500/[0.02] dark:bg-amber-950/[0.03] backdrop-blur-sm">
+          <CardHeader className="border-b border-amber-500/10 pb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-amber-500/10 rounded-lg text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-5 w-5 animate-pulse" />
+              </div>
+              <div>
+                <CardTitle className="text-lg font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                  Xử lý Nhà cung cấp cần bổ sung
+                  <span className="flex h-5 px-2 items-center justify-center rounded-full bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-600 dark:text-amber-400">
+                    {unmappedSuppliers.size}
+                  </span>
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                  Các nhà cung cấp này được tìm thấy trong hóa đơn nhưng chưa có trong danh mục hoặc thiếu mã.
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <UnmappedSupplierTable 
               suppliers={Array.from(unmappedSuppliers.values())}
               onUpdate={handleUpdateUnmappedSupplier}
               supplierMapping={supplierMapping}
             />
           </CardContent>
-          <CardFooter>
-            <Button onClick={handleConfirmUnmappedSuppliers} className="ml-auto">
+          <CardFooter className="border-t border-amber-500/10 pt-4 justify-end">
+            <Button onClick={handleConfirmUnmappedSuppliers} className="bg-amber-600 hover:bg-amber-500 text-white font-semibold shadow-sm rounded-lg">
               <RefreshCw className="mr-2 h-4 w-4" />
               Lưu thông tin NCC
             </Button>
@@ -1552,27 +1636,37 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
       )}
 
       {!isProcessingFiles && !isFindingUnmappedItems && currentUnmappedList.length > 0 && (
-        <Card>
-            <CardHeader>
+        <Card className="shadow-lg border-rose-500/20 bg-rose-500/[0.01] dark:bg-rose-950/[0.02] backdrop-blur-sm">
+            <CardHeader className="border-b border-rose-500/10 pb-4">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div className="flex-1">
-                        <CardTitle>Xử lý mã chưa được ánh xạ ({currentUnmappedList.length})</CardTitle>
-                        <CardDescription className="mt-1">
-                            Các mã hàng này chưa có trong danh mục. Hãy điền thông tin và cập nhật.
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-rose-500/10 rounded-lg text-rose-600 dark:text-rose-400">
+                        <AlertTriangle className="h-5 w-5 animate-bounce" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2">
+                          Xử lý mã chưa được ánh xạ
+                          <span className="flex h-5 px-2 items-center justify-center rounded-full bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-600 dark:text-rose-400">
+                            {currentUnmappedList.length}
+                          </span>
+                        </CardTitle>
+                        <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                          Các mã hàng này chưa có trong danh mục. Hãy điền thông tin và cập nhật để mở khóa hoàn tất.
                         </CardDescription>
+                      </div>
                     </div>
                      <div className="relative w-full sm:w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Tìm kiếm mã hoặc tên..."
-                            value={unmappedDataSearch}
-                            onChange={(e) => setUnmappedDataSearch(e.target.value)}
-                            className="pl-10"
-                        />
-                    </div>
+                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                         <Input 
+                             placeholder="Tìm kiếm mã hoặc tên..."
+                             value={unmappedDataSearch}
+                             onChange={(e) => setUnmappedDataSearch(e.target.value)}
+                             className="pl-10 border-rose-500/20 focus-visible:ring-rose-500"
+                         />
+                     </div>
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
                 <ManualMappingTable 
                     items={currentUnmappedList}
                     onUpdate={handleUpdateUnmappedItem}
@@ -1582,8 +1676,8 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
                     masterCatalog={masterCatalog}
                 />
             </CardContent>
-            <CardFooter>
-                <Button onClick={handleConfirmManualMappings} className="ml-auto">
+            <CardFooter className="border-t border-rose-500/10 pt-4 justify-end">
+                <Button onClick={handleConfirmManualMappings} className="bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-sm rounded-lg">
                     <RefreshCw className="mr-2 h-4 w-4" />
                     Cập nhật danh mục
                 </Button>
@@ -1592,27 +1686,37 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
       )}
 
       {!isProcessingFiles && !isFindingUnmappedItems && currentAlreadyMappedList.length > 0 && (
-        <Card>
-            <CardHeader>
+        <Card className="shadow-lg border-emerald-500/20 bg-emerald-500/[0.01] dark:bg-emerald-950/[0.02] backdrop-blur-sm">
+            <CardHeader className="border-b border-emerald-500/10 pb-4">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div className="flex-1">
-                        <CardTitle>Các mã đã được ánh xạ ({currentAlreadyMappedList.length})</CardTitle>
-                        <CardDescription className="mt-1">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400">
+                        <Users className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                          Các mã đã được ánh xạ
+                          <span className="flex h-5 px-2 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            {currentAlreadyMappedList.length}
+                          </span>
+                        </CardTitle>
+                        <CardDescription className="text-xs text-muted-foreground mt-0.5">
                            Các mã này đã được tự động ánh xạ. Bạn có thể xem lại và chỉnh sửa nếu cần.
                         </CardDescription>
+                      </div>
                     </div>
                      <div className="relative w-full sm:w-64">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input 
-                            placeholder="Tìm kiếm mã hoặc tên..."
-                            value={alreadyMappedSearch}
-                            onChange={(e) => setAlreadyMappedSearch(e.target.value)}
-                            className="pl-10"
-                        />
-                    </div>
+                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                         <Input 
+                             placeholder="Tìm kiếm mã hoặc tên..."
+                             value={alreadyMappedSearch}
+                             onChange={(e) => setAlreadyMappedSearch(e.target.value)}
+                             className="pl-10 border-emerald-500/20 focus-visible:ring-emerald-500"
+                         />
+                     </div>
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
                 <AlreadyMappedTable
                     items={currentAlreadyMappedList}
                     onUpdate={handleUpdateAlreadyMappedItem}
@@ -1620,7 +1724,7 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
                     masterCatalog={masterCatalog}
                 />
             </CardContent>
-             <CardFooter>
+             <CardFooter className="border-t border-emerald-500/10 pt-4 justify-end">
                 <Button onClick={() => {
                   const updates = Array.from(alreadyMappedItems.values());
                   const batch = writeBatch(firestore);
@@ -1633,7 +1737,7 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
                   }).catch(e => {
                     toast({variant: 'destructive', title: 'Lỗi', description: 'Không thể lưu thay đổi.'})
                   })
-                }} className="ml-auto">
+                }} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-sm rounded-lg">
                     <RefreshCw className="mr-2 h-4 w-4" />
                     Lưu các thay đổi
                 </Button>
@@ -1643,17 +1747,44 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
 
 
       {!isProcessingFiles && invoiceData.length > 0 && (
-        <Tabs defaultValue="mapped" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="summary">Thống kê hóa đơn</TabsTrigger>
-            <TabsTrigger value="comparison">Đối chiếu bảng kê</TabsTrigger>
-            <TabsTrigger value="mapped">Dữ liệu đã ánh xạ</TabsTrigger>
-            <TabsTrigger value="original">Dữ liệu gốc</TabsTrigger>
-            <TabsTrigger value="warning" className="relative flex items-center justify-center gap-1.5 text-destructive data-[state=active]:bg-destructive/10">
-              <AlertTriangle className="h-4 w-4" />
+        <Tabs defaultValue="mapped" className="w-full space-y-6">
+          <TabsList className="grid w-full grid-cols-5 p-1 bg-muted/60 backdrop-blur-sm rounded-xl border border-border/40 h-auto gap-1">
+            <TabsTrigger 
+              value="summary"
+              className="rounded-lg transition-all py-2.5 text-sm font-medium hover:bg-background/40 hover:text-foreground data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground"
+            >
+              Thống kê hóa đơn
+            </TabsTrigger>
+            <TabsTrigger 
+              value="comparison"
+              className="rounded-lg transition-all py-2.5 text-sm font-medium hover:bg-background/40 hover:text-foreground data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground"
+            >
+              Đối chiếu bảng kê
+            </TabsTrigger>
+            <TabsTrigger 
+              value="mapped"
+              className="rounded-lg transition-all py-2.5 text-sm font-medium hover:bg-background/40 hover:text-foreground data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground"
+            >
+              Dữ liệu đã ánh xạ
+            </TabsTrigger>
+            <TabsTrigger 
+              value="original"
+              className="rounded-lg transition-all py-2.5 text-sm font-medium hover:bg-background/40 hover:text-foreground data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:text-foreground text-muted-foreground"
+            >
+              Dữ liệu gốc
+            </TabsTrigger>
+            <TabsTrigger 
+              value="warning" 
+              className={`relative flex items-center justify-center gap-1.5 rounded-lg transition-all py-2.5 text-sm font-medium hover:bg-background/40 data-[state=active]:shadow-sm ${
+                warningData.length > 0 
+                  ? "text-rose-500 border border-rose-500/30 bg-rose-500/5 shadow-[0_0_8px_rgba(239,68,68,0.2)] dark:shadow-[0_0_12px_rgba(239,68,68,0.15)] data-[state=active]:bg-rose-500/10 data-[state=active]:border-rose-500/40" 
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/20"
+              }`}
+            >
+              <AlertTriangle className={`h-4 w-4 ${warningData.length > 0 ? "animate-bounce" : ""}`} />
               Cảnh báo
               {warningData.length > 0 && (
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground animate-pulse">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white animate-pulse">
                   {warningData.length}
                 </span>
               )}
@@ -1768,29 +1899,35 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
       )}
 
       {invoiceData.length > 0 && (
-        <Card>
+        <Card className="shadow-lg border-primary/20 bg-primary/5 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>Hoàn tất và Lưu trữ</CardTitle>
-            <CardDescription>
-              Sau khi đã ánh xạ tất cả các mã và nhà cung cấp, hãy lưu kết quả vào lịch sử nhập hàng.
+            <CardTitle className="text-xl font-bold text-primary flex items-center gap-2">
+              <Save className="h-5 w-5 animate-pulse" />
+              Hoàn tất & Lưu trữ
+            </CardTitle>
+            <CardDescription className="text-sm">
+              Sau khi đã ánh xạ tất cả các mã và nhà cung cấp, hãy lưu kết quả vào lịch sử nhập hàng của hệ thống.
             </CardDescription>
           </CardHeader>
-          <CardFooter>
+          <CardFooter className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-0">
             <Button 
               onClick={handleSaveSession}
               disabled={!canSaveSession || isSavingSession}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-md px-6 rounded-lg transition-all"
             >
               {isSavingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Hoàn tất & Lưu vào Lịch sử
             </Button>
             {!canSaveSession && (
-              <p className="ml-4 text-sm text-destructive">
+              <p className="text-xs text-destructive font-semibold flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 animate-bounce">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 Vui lòng xử lý hết các mục chưa ánh xạ và nhà cung cấp cần bổ sung trước khi lưu.
               </p>
             )}
           </CardFooter>
         </Card>
       )}
+      </div>
     </div>
   );
 }

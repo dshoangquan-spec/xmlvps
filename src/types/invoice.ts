@@ -47,6 +47,7 @@ export interface ExportItem {
 export interface ViettelExportItem {
   'Mã phiếu nhập': string;
   'Mã nhà CC': string;
+  'Tên nhà cung cấp'?: string;
   'Ngày HĐ': string;
   'Số HĐ': string;
   'Ngày lập': string;

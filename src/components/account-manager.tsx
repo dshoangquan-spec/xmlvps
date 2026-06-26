@@ -299,7 +299,7 @@ const CostManager = ({ account, user }: { account: PharmacyAccount, user: Custom
             const accountRef = doc(firestore, 'users', user.id, 'pharmacy_accounts', account.id);
             const dataToUpdate: Partial<PharmacyAccount> = {};
             if (accountData.usageStartDate) dataToUpdate.usageStartDate = accountData.usageStartDate;
-            const feeValue = typeof accountData.softwareFee === 'string' ? parseFloat(accountData.softwareFee.replace(/\./g, '')) : accountData.softwareFee;
+            const feeValue = typeof (accountData.softwareFee as any) === 'string' ? parseFloat((accountData.softwareFee as any).replace(/\./g, '')) : accountData.softwareFee;
             if (feeValue) dataToUpdate.softwareFee = Number(feeValue);
             if (accountData.softwareFeeDate) dataToUpdate.softwareFeeDate = accountData.softwareFeeDate;
             batch.update(accountRef, dataToUpdate);

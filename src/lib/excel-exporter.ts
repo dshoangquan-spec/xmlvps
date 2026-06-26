@@ -4,7 +4,8 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import type { InvoiceItem, ExportItem, ViettelExportItem } from '@/types/invoice';
 import type { Supplier, MasterCatalogItem, Mapping, InvoiceItem as FirebaseInvoiceItem } from '@/types/firebase';
-import { format, parse, isValid, type DateRange } from 'date-fns';
+import { format, parse, isValid } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 import type { InvoiceSummaryData } from '@/components/invoice-summary';
 import type { ComparisonItem } from './comparison-parser';
 

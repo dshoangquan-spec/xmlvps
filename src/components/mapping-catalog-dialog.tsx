@@ -112,7 +112,7 @@ export function MappingCatalogDialog({
   const { toast } = useToast();
   const [unitOptions, setUnitOptions] = useState(initialUnitOptions);
   
-  const [columnVisibility, setColumnVisibility] = useState(() => {
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => {
     try {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem(LOCAL_STORAGE_KEY);

@@ -82,7 +82,7 @@ export async function processMasterCatalogFile(
           return colName ? headers.indexOf(colName) : -1;
         };
         
-        const idx: { [K in keyof MasterCatalogItem]: number } = {
+        const idx: { [K in keyof MasterCatalogItem]-?: number } = {
           id: getIndex('id'),
           productName: getIndex('productName'),
           activeIngredient: getIndex('activeIngredient'),

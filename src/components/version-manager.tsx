@@ -52,7 +52,7 @@ function VersionItem({ version, onDeleteVersion }: { version: Version; onDeleteV
     const handleUpdateChange = async () => {
         if (!editingChange) return;
         const changeRef = doc(firestore, 'versions', version.id, 'changes', editingChange.id);
-        await updateDoc(changeRef, editingChange);
+        await updateDoc(changeRef, editingChange as any);
         setEditingChange(null);
         toast({ title: 'Cập nhật thành công!' });
     };

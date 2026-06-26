@@ -112,13 +112,18 @@ export function InvoiceSummary({ data }: InvoiceSummaryProps) {
   }
 
   return (
-    <Card className="shadow-lg">
-        <CardHeader>
+    <Card className="shadow-lg border-border/40 bg-card/60 backdrop-blur-sm">
+        <CardHeader className="pb-4 border-b border-border/40">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex-1">
-                    <CardTitle>Thống kê hóa đơn</CardTitle>
-                    <CardDescription className="mt-1">
-                        Tổng hợp {filteredData.length} hóa đơn đã được tải lên.
+                    <CardTitle className="text-xl font-bold flex items-center gap-2">
+                      Thống kê hóa đơn
+                      <span className="flex h-5 px-2 items-center justify-center rounded-full bg-primary/10 border border-primary/20 text-xs font-bold text-primary">
+                        {filteredData.length}
+                      </span>
+                    </CardTitle>
+                    <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                        Tổng hợp danh sách các hóa đơn đã được tải lên và đối chiếu trong phiên làm việc.
                     </CardDescription>
                 </div>
                 <div className="relative w-full sm:w-64">
@@ -132,10 +137,10 @@ export function InvoiceSummary({ data }: InvoiceSummaryProps) {
                 </div>
             </div>
         </CardHeader>
-        <CardContent>
-            <ScrollArea className="h-[500px] w-full rounded-md border shadow-md">
+        <CardContent className="pt-6">
+            <ScrollArea className="h-[500px] w-full rounded-xl border border-border/40 shadow-sm overflow-hidden">
                 <Table>
-                    <TableHeader className="sticky top-0 bg-secondary z-10">
+                    <TableHeader className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10 border-b border-border/40">
                     <TableRow>
                         <TableHead className="w-[12%]">Số hóa đơn</TableHead>
                         <TableHead className="w-[10%]">Ngày lập</TableHead>
@@ -143,28 +148,28 @@ export function InvoiceSummary({ data }: InvoiceSummaryProps) {
                         <TableHead className="w-[12%] text-right">Tiền hàng (trước CK)</TableHead>
                         <TableHead className="w-[10%] text-right">Giảm giá</TableHead>
                         <TableHead className="w-[10%] text-right">Tiền thuế</TableHead>
-                        <TableHead className="w-[13%] text-right">Tổng cộng (Tính toán)</TableHead>
-                        <TableHead className="w-[13%] text-right">Tổng cộng (XML)</TableHead>
+                        <TableHead className="w-[13%] text-right font-semibold">Tổng cộng (Tính)</TableHead>
+                        <TableHead className="w-[13%] text-right font-semibold">Tổng cộng (XML)</TableHead>
                     </TableRow>
                     </TableHeader>
                     <TableBody>
                     {filteredData.length > 0 ? (
                         filteredData.map((item) => (
-                        <TableRow key={item.invoiceNumber}>
-                            <TableCell className="font-medium">{item.invoiceNumber}</TableCell>
-                            <TableCell>{item.issueDate}</TableCell>
-                            <TableCell>{item.supplierName}</TableCell>
-                            <TableCell className="text-right">{formatNumber(item.totalAmountBeforeDiscount)}</TableCell>
-                            <TableCell className="text-right text-red-600">{formatNumber(item.totalDiscount)}</TableCell>
-                            <TableCell className="text-right">{formatNumber(item.totalTax)}</TableCell>
-                            <TableCell className="text-right font-semibold">{formatNumber(item.grandTotal)}</TableCell>
-                            <TableCell className="text-right font-semibold text-blue-600">{formatNumber(item.xmlGrandTotal)}</TableCell>
+                        <TableRow key={item.invoiceNumber} className="hover:bg-muted/40 transition-colors">
+                            <TableCell className="font-semibold text-foreground">{item.invoiceNumber}</TableCell>
+                            <TableCell className="text-muted-foreground text-xs">{item.issueDate}</TableCell>
+                            <TableCell className="text-sm font-medium">{item.supplierName}</TableCell>
+                            <TableCell className="text-right text-sm">{formatNumber(item.totalAmountBeforeDiscount)}</TableCell>
+                            <TableCell className="text-right text-rose-600 dark:text-rose-400 font-semibold text-sm">{formatNumber(item.totalDiscount)}</TableCell>
+                            <TableCell className="text-right text-sm">{formatNumber(item.totalTax)}</TableCell>
+                            <TableCell className="text-right font-bold text-sm text-foreground">{formatNumber(item.grandTotal)}</TableCell>
+                            <TableCell className="text-right font-bold text-sm text-blue-600 dark:text-blue-400">{formatNumber(item.xmlGrandTotal)}</TableCell>
                         </TableRow>
                         ))
                     ) : (
                         <TableRow>
-                        <TableCell colSpan={8} className="h-24 text-center">
-                            Không tìm thấy kết quả.
+                        <TableCell colSpan={8} className="h-24 text-center text-muted-foreground text-sm">
+                            Không tìm thấy kết quả thống kê.
                         </TableCell>
                         </TableRow>
                     )}
@@ -172,8 +177,8 @@ export function InvoiceSummary({ data }: InvoiceSummaryProps) {
                 </Table>
             </ScrollArea>
         </CardContent>
-        <CardFooter>
-            <Button onClick={handleExport} className="ml-auto">
+        <CardFooter className="border-t border-border/40 pt-4 justify-end">
+            <Button onClick={handleExport} className="bg-primary hover:bg-primary/95 text-primary-foreground font-semibold shadow-sm rounded-lg">
                 <Download className="mr-2 h-4 w-4" />
                 Xuất thống kê
             </Button>

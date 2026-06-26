@@ -88,7 +88,7 @@ export default function MasterCatalogManager() {
 
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' } | null>({ key: 'id', direction: 'asc' });
 
-  const [columnVisibility, setColumnVisibility] = useState(() => {
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => {
     try {
         if (typeof window !== 'undefined') {
             const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -288,8 +288,8 @@ export default function MasterCatalogManager() {
   };
 
   const handleInputChange = (field: keyof MasterCatalogItem, value: string | number, isNew: boolean) => {
-    const processValue = (prev: MasterCatalogItem) => {
-      const newPrev = {...prev};
+    const processValue = (prev: MasterCatalogItem | null) => {
+      const newPrev = prev ? {...prev} : {...emptyItem};
       if (field === 'conversionRate') {
         const numValue = typeof value === 'string' ? parseFloat(value) : value;
         newPrev[field] = isNaN(numValue) ? 1 : numValue;
@@ -339,7 +339,7 @@ export default function MasterCatalogManager() {
         batch.set(newDocRef, editFormData);
         await batch.commit();
     } else {
-        await updateDoc(originalDocRef, editFormData);
+        await updateDoc(originalDocRef, editFormData as any);
     }
     toast({ title: 'Cập nhật sản phẩm thành công' });
     handleCancelEdit();

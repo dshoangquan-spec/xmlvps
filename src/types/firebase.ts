@@ -10,6 +10,7 @@ export interface Mapping {
   originalUnit?: string;
   newUnit: string;
   conversionRate: number;
+  masterCatalogId?: string;
 }
 
 export interface CommunityMapping {

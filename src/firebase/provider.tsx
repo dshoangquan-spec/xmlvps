@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, ReactNode, useMemo, DependencyList } from 'react';
 import { FirebaseApp } from 'firebase/app';
-import { Firestore, Query, CollectionReference } from 'firebase/firestore';
+import { Firestore, Query, CollectionReference, DocumentReference } from 'firebase/firestore';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 
 // Combined state for the Firebase context
@@ -68,7 +68,7 @@ export const useFirestore = (): Firestore => {
   return firestore;
 };
 
-export function useMemoFirebase<T extends Query | CollectionReference | null | undefined>(factory: () => T, deps: DependencyList): T {
+export function useMemoFirebase<T extends Query | CollectionReference | DocumentReference | null | undefined>(factory: () => T, deps: DependencyList): T {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const memoized = useMemo(factory, deps);
   return memoized;

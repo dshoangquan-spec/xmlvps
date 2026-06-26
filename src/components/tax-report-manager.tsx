@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Home, Loader2, Save, AlertTriangle, Pencil, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { collection, query, orderBy, doc, setDoc, serverTimestamp, writeBatch, getDoc, deleteDoc, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, doc, setDoc, serverTimestamp, writeBatch, getDoc, deleteDoc, where, onSnapshot, DocumentReference } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { getYear, getQuarter, subQuarters, format } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
@@ -132,7 +132,7 @@ export default function TaxReportManager({ currentUser }: TaxReportManagerProps)
         selectedAccount ? `${selectedYear}-Q${selectedQuarter}` : null
     , [selectedAccount, selectedYear, selectedQuarter]);
     
-    const reportRef = useMemoFirebase(() => 
+    const reportRef = useMemoFirebase<DocumentReference | null>(() => 
       (selectedUserId && selectedAccount && reportId) ? doc(firestore, 'users', selectedUserId, 'pharmacy_accounts', selectedAccount, 'tax_reports', reportId) : null,
     [selectedUserId, selectedAccount, reportId, firestore]);
     const { data: existingReport, isLoading: isLoadingReport } = useDoc<TaxReport>(reportRef);

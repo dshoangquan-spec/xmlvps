@@ -3,11 +3,8 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { collection, doc, setDoc, deleteDoc, writeBatch, getDocs, where, query, updateDoc, addDoc, getDoc, serverTimestamp, increment, orderBy, collectionGroup } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, writeBatch, getDoc, increment } from 'firebase/firestore';
 import Link from 'next/link';
-import { read, utils, WorkBook } from 'xlsx';
-import { format, parse, isValid } from 'date-fns';
-import JSZip from 'jszip';
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,24 +20,18 @@ import { InvoiceSummary } from '@/components/invoice-summary';
 import { AlreadyMappedTable } from '@/components/already-mapped-table';
 import { VersionHistoryDialog } from '@/components/version-history-dialog';
 import { ComparisonManager } from '@/components/comparison-manager';
-import { processXmlFile } from '@/lib/invoice-parser';
-import { exportToExcel, exportToExcelViettel } from '@/lib/excel-exporter';
-import { processMappingFile, type ColumnMap as MappingColumnMap } from '@/lib/mapping-parser';
-import { processSupplierFile, type ColumnMap as SupplierColumnMap } from '@/lib/supplier-parser';
 
 import type { InvoiceItem as ParsedInvoiceItem } from '@/types/invoice';
-import type { Mapping, Supplier, User as CustomUser, MasterCatalogItem, Invoice, InvoiceItem, CommunityMapping, ProcessingItem, Version, ImportSession } from '@/types/firebase';
+import type { Mapping, Supplier, CommunityMapping, ProcessingItem } from '@/types/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Loader2, FileUp, RefreshCw, BookMarked, Search, Users, LogOut, ShieldCheck, KeyRound, Database, FileText, Save, Archive, LayoutDashboard, Library, History, FilePieChart, AlertTriangle, Sun, Moon } from 'lucide-react';
+import { Download, Loader2, FileUp, RefreshCw, BookMarked, Search, Users, LogOut, ShieldCheck, KeyRound, Database, FileText, Save, Archive, LayoutDashboard, History, FilePieChart, AlertTriangle, Sun, Moon } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { useFirestore } from '@/firebase';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import {
   AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -55,8 +46,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { MappingImportDialog, type ExcelData } from '@/components/mapping-import-dialog';
+import { MappingImportDialog } from '@/components/mapping-import-dialog';
 import { SupplierImportDialog } from '@/components/supplier-import-dialog';
+import { useCatalogImports } from '@/hooks/invoice-processor/use-catalog-imports';
+import { useInvoiceAuth } from '@/hooks/invoice-processor/use-invoice-auth';
+import { useInvoiceCatalogData } from '@/hooks/invoice-processor/use-invoice-catalog-data';
+import { useInvoiceExport } from '@/hooks/invoice-processor/use-invoice-export';
+import { useInvoiceFiles } from '@/hooks/invoice-processor/use-invoice-files';
+import { useImportSessionSave } from '@/hooks/invoice-processor/use-import-session-save';
+import { useThemeMode } from '@/hooks/invoice-processor/use-theme-mode';
 
 
 // Helper to sanitize document IDs
@@ -64,58 +62,17 @@ const sanitizeDocId = (id: string) => id.replace(/\//g, '-');
 
 
 export default function InvoiceProcessor() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { isDarkMode, toggleDarkMode } = useThemeMode();
+  const { toast } = useToast();
+  const firestore = useFirestore();
 
-  useEffect(() => {
-    const isDark = localStorage.getItem('theme') === 'dark' || 
-                   (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    setIsDarkMode(isDark);
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
-
-  const toggleDarkMode = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    if (newMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  };
-  const [invoiceData, setInvoiceData] = useState<ParsedInvoiceItem[]>([]);
   const [unmappedItems, setUnmappedItems] = useState<Map<string, ProcessingItem>>(new Map());
   const [alreadyMappedItems, setAlreadyMappedItems] = useState<Map<string, ProcessingItem>>(new Map());
   const [unmappedSuppliers, setUnmappedSuppliers] = useState<Map<string, Supplier>>(new Map());
-  
-  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [isFindingUnmappedItems, setIsFindingUnmappedItems] = useState(false);
-  const { toast } = useToast();
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isSupplierCatalogOpen, setIsSupplierCatalogOpen] = useState(false);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
-
-
-  // State for import dialogs
-  const [isMappingImportOpen, setIsMappingImportOpen] = useState(false);
-  const [mappingFileData, setMappingFileData] = useState<ExcelData | null>(null);
-  const [mappingFile, setMappingFile] = useState<File | null>(null);
-  const [isSupplierImportOpen, setIsSupplierImportOpen] = useState(false);
-  const [supplierFileData, setSupplierFileData] = useState<ExcelData | null>(null);
-  const [supplierFile, setSupplierFile] = useState<File | null>(null);
-  const [isImportingMappings, setIsImportingMappings] = useState(false);
-  const [isImportingSuppliers, setIsImportingSuppliers] = useState(false);
-  
-  // State for user changing own password
-  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   // Search terms for tables
   const [originalDataSearch, setOriginalDataSearch] = useState('');
@@ -126,65 +83,68 @@ export default function InvoiceProcessor() {
   
   // State for ManualMappingTable
   const [selectedUnmappedId, setSelectedUnmappedId] = useState<string | null>(null);
-  const [isSavingSession, setIsSavingSession] = useState(false);
-  const [processedFileNames, setProcessedFileNames] = useState<string[]>([]);
-  const [uploadedXmls, setUploadedXmls] = useState<Record<string, string>>({});
-  
-  // State for duplicate invoice handling
-  const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
-  const [duplicateInvoices, setDuplicateInvoices] = useState<Invoice[]>([]);
 
-
-
-  const firestore = useFirestore();
-  
-  const [currentUser, setCurrentUser] = useState<CustomUser | null>(null);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  
-  // This effect handles fetching the user's profile from localStorage on initial load.
-  useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('currentUser');
-      if (storedUser) {
-        setCurrentUser(JSON.parse(storedUser));
-      }
-    } catch (error) {
-      console.error("Could not parse user from localStorage", error);
-      localStorage.removeItem('currentUser');
-    }
-    setIsAuthLoading(false);
+  const resetProcessingState = useCallback(() => {
+    setUnmappedItems(new Map());
+    setAlreadyMappedItems(new Map());
+    setUnmappedSuppliers(new Map());
   }, []);
 
+  const {
+    invoiceData,
+    isProcessingFiles,
+    processedFileNames,
+    warningData,
+    handleFileProcessing,
+    handleDownloadXml,
+    handleDownloadAllWarningXmls,
+    resetInvoiceFiles,
+  } = useInvoiceFiles({ toast, onResetProcessingState: resetProcessingState });
 
-  // --- Firebase Data Hooks ---
-  const mappingsRef = useMemoFirebase(() => currentUser ? collection(firestore, 'users', currentUser.id, 'mappings') : null, [firestore, currentUser]);
-  const { data: mappingsData, isLoading: isLoadingMappings } = useCollection<Mapping>(mappingsRef);
-  
-  const suppliersRef = useMemoFirebase(() => currentUser ? collection(firestore, 'users', currentUser.id, 'suppliers') : null, [firestore, currentUser]);
-  const { data: suppliersData, isLoading: isLoadingSuppliers } = useCollection<Supplier>(suppliersRef);
-  
-  const masterCatalogRef = useMemoFirebase(() => collection(firestore, 'master_catalog'), [firestore]);
-  const { data: masterCatalogData, isLoading: isLoadingMasterCatalog } = useCollection<MasterCatalogItem>(masterCatalogRef);
+  const resetWorkspace = useCallback(() => {
+    resetInvoiceFiles();
+    resetProcessingState();
+  }, [resetInvoiceFiles, resetProcessingState]);
 
-  // Memoize the converted Maps
-  const mapping = useMemo(() => {
-      const map = new Map<string, Mapping>();
-      mappingsData?.forEach(item => map.set(item.id, item));
-      return map;
-  }, [mappingsData]);
+  const {
+    currentUser,
+    authError,
+    isAuthLoading,
+    handleAuthAction,
+    isPasswordDialogOpen,
+    setIsPasswordDialogOpen,
+    newPassword,
+    setNewPassword,
+    confirmNewPassword,
+    setConfirmNewPassword,
+    isUpdatingPassword,
+    handleChangePassword,
+  } = useInvoiceAuth({ firestore, toast, onLogout: resetWorkspace });
 
-  const supplierMapping = useMemo(() => {
-      const map = new Map<string, Supplier>();
-      suppliersData?.forEach(item => map.set(item.id, item));
-      return map;
-  }, [suppliersData]);
-  
-  const masterCatalog = useMemo(() => {
-    const map = new Map<string, MasterCatalogItem>();
-    masterCatalogData?.forEach(item => map.set(item.id, item));
-    return map;
-  }, [masterCatalogData]);
+  const {
+    isMappingImportOpen,
+    setIsMappingImportOpen,
+    mappingFileData,
+    isSupplierImportOpen,
+    setIsSupplierImportOpen,
+    supplierFileData,
+    isImportingMappings,
+    isImportingSuppliers,
+    handleMappingFileSelect,
+    handleConfirmMappingImport,
+    handleSupplierFileSelect,
+    handleConfirmSupplierImport,
+  } = useCatalogImports({ currentUser, firestore, toast });
+
+  const {
+    mapping,
+    supplierMapping,
+    masterCatalog,
+    isLoadingMappings,
+    isLoadingSuppliers,
+  } = useInvoiceCatalogData(firestore, currentUser);
+
+  const { handleExport, handleExportViettel } = useInvoiceExport(toast, supplierMapping);
 
   const mappedData = useMemo(() => {
     return invoiceData.map(item => {
@@ -210,15 +170,21 @@ export default function InvoiceProcessor() {
     });
   }, [invoiceData, mapping]);
 
-  const warningData = useMemo(() => {
-    return invoiceData.filter(item => {
-      const quantity = item["Số lượng"];
-      const isProduct = quantity > 0;
-      const missingSolo = !item["Số lô"] || item["Số lô"] === "Null" || item["Số lô"].trim() === "";
-      const missingHsdd = !item["Hạn dùng"] || item["Hạn dùng"].trim() === "";
-      return isProduct && (missingSolo || missingHsdd);
-    });
-  }, [invoiceData]);
+  const {
+    isSavingSession,
+    isDuplicateDialogOpen,
+    setIsDuplicateDialogOpen,
+    duplicateInvoices,
+    handleSaveSession,
+    handleDuplicateChoice,
+  } = useImportSessionSave({
+    currentUser,
+    firestore,
+    mappedData,
+    processedFileNames,
+    toast,
+    onSaveSuccess: resetWorkspace,
+  });
 
  const findUnmappedItems = useCallback(async (invoices: ParsedInvoiceItem[], currentMapping: Map<string, Mapping>) => {
     if (!currentUser || !firestore) return;
@@ -340,522 +306,6 @@ export default function InvoiceProcessor() {
       findUnmappedSuppliers(invoiceData, supplierMapping);
     }
   }, [invoiceData, isLoadingSuppliers, supplierMapping, findUnmappedSuppliers]);
-
-  const createInvoiceIdentifier = (invoiceNum: string, date: string, taxCode: string) => {
-    try {
-        const parsedDate = parse(date, 'dd/MM/yyyy', new Date());
-        if(isValid(parsedDate)){
-            const isoDate = format(parsedDate, 'yyyy-MM-dd');
-            return `${invoiceNum}_${isoDate}_${taxCode}`;
-        }
-    } catch (e) {
-        // Fallback for invalid date format
-    }
-    return `${invoiceNum}_${date}_${taxCode}`;
-  };
-
-  const executeSave = async (invoicesToSave: Map<string, Omit<Invoice, 'id'>>, invoicesToDelete: Invoice[] = []) => {
-      if (!currentUser || !firestore) return;
-      setIsSavingSession(true);
-      const now = new Date();
-      
-      const sessionRef = doc(collection(firestore, 'users', currentUser.id, 'import_sessions'));
-      const sessionId = sessionRef.id;
-
-      const newSession: Omit<ImportSession, 'id'> = {
-          userId: currentUser.id,
-          importDate: now.toISOString(),
-          fileNames: processedFileNames,
-          invoiceCount: invoicesToSave.size,
-          itemCount: mappedData.filter(item => invoicesToSave.has(item['Số hóa đơn'])).length,
-      };
-
-      const batch = writeBatch(firestore);
-
-      // 1. Delete old invoices if any
-      for (const invToDelete of invoicesToDelete) {
-          const invoiceDocRef = doc(firestore, 'users', currentUser.id, 'invoices', invToDelete.id);
-          const itemsSnapshot = await getDocs(collection(invoiceDocRef, 'items'));
-          itemsSnapshot.forEach(itemDoc => batch.delete(itemDoc.ref));
-          batch.delete(invoiceDocRef);
-      }
-
-      // 2. Add new session
-      batch.set(sessionRef, newSession);
-
-      // 3. Add new invoices and items
-      invoicesToSave.forEach((invoiceHeader, invoiceNum) => {
-          const sanitizedInvoiceNum = sanitizeDocId(invoiceNum);
-          const invoiceDocRef = doc(firestore, 'users', currentUser.id, 'invoices', sanitizedInvoiceNum);
-          
-          const uniqueId = createInvoiceIdentifier(invoiceNum, invoiceHeader.invoiceDate, invoiceHeader.sellerTaxCode);
-          batch.set(invoiceDocRef, { ...invoiceHeader, id: invoiceNum, uniqueIdentifier: uniqueId, importSessionId: sessionId });
-
-          const itemsForThisInvoice = mappedData.filter(item => item['Số hóa đơn'] === invoiceNum);
-          itemsForThisInvoice.forEach((itemData, index) => {
-              const itemDocRef = doc(collection(invoiceDocRef, 'items'));
-              let isoDate = '';
-              try {
-                  const parsedDate = parse(itemData['Ngày hóa đơn'], 'dd/MM/yyyy', new Date());
-                  if (isValid(parsedDate)) {
-                      isoDate = format(parsedDate, 'yyyy-MM-dd');
-                  }
-              } catch(e) { /* ignore */ }
-
-              const invoiceItem: Omit<InvoiceItem, 'id'> = {
-                  userId: currentUser.id,
-                  invoiceId: invoiceNum,
-                  invoiceDate: itemData['Ngày hóa đơn'],
-                  invoiceDateISO: isoDate,
-                  sellerName: itemData['Nhà cung cấp'],
-                  lineNumber: itemData['STT'] || String(index + 1),
-                  itemCode: itemData['Mã hàng'],
-                  itemName: itemData['Tên hàng hóa'],
-                  manufacturer: itemData['Nhà sản xuất'],
-                  unit: itemData['ĐVT'],
-                  quantity: String(itemData['Số lượng']),
-                  unitPrice: String(itemData['Đơn giá']),
-                  totalAmount: String(itemData['Thành tiền']),
-                  taxRate: itemData['Thuế suất'],
-                  lotNumber: itemData['Số lô'],
-                  expirationDate: itemData['Hạn dùng'],
-              };
-              batch.set(itemDocRef, invoiceItem);
-          });
-      });
-
-      try {
-          await batch.commit();
-          toast({
-              title: "Đã lưu kết quả nhập hàng",
-              description: `${invoicesToSave.size} hóa đơn và ${mappedData.filter(item => invoicesToSave.has(item['Số hóa đơn'])).length} dòng sản phẩm đã được lưu.`,
-          });
-          setInvoiceData([]);
-          setUnmappedItems(new Map());
-          setUnmappedSuppliers(new Map());
-          setAlreadyMappedItems(new Map());
-          setProcessedFileNames([]);
-          setDuplicateInvoices([]);
-          setIsDuplicateDialogOpen(false);
-      } catch (error) {
-          const permissionError = new FirestorePermissionError({
-              path: 'batch write to multiple documents',
-              operation: 'write'
-          });
-          errorEmitter.emit('permission-error', permissionError);
-      } finally {
-          setIsSavingSession(false);
-      }
-  };
-
-
- const handleSaveSession = async () => {
-    if (!currentUser || !firestore || mappedData.length === 0) return;
-    
-    setIsSavingSession(true);
-    
-    const uniqueInvoicesToSave = new Map<string, Omit<Invoice, 'id'>>();
-    const uniqueIdentifiers = new Set<string>();
-
-    mappedData.forEach(item => {
-        const invoiceNum = item['Số hóa đơn'];
-        if (!uniqueInvoicesToSave.has(invoiceNum)) {
-             const identifier = createInvoiceIdentifier(invoiceNum, item['Ngày hóa đơn'], item['Mã số thuế']);
-             uniqueIdentifiers.add(identifier);
-             uniqueInvoicesToSave.set(invoiceNum, {
-                importSessionId: '', // will be set later
-                provider: item['Nhà cung cấp'],
-                invoiceDate: item['Ngày hóa đơn'],
-                sellerName: item['Nhà cung cấp'],
-                sellerTaxCode: item['Mã số thuế'],
-                sellerAddress: item['Địa chỉ'],
-                buyerName: item['Nhà thuốc'],
-                fileName: item['Tên file'],
-                portalLink: item['Link truy cập'],
-                accessCode: item['Mã truy cập'],
-            });
-        }
-    });
-
-    try {
-        const invoicesRef = collection(firestore, 'users', currentUser.id, 'invoices');
-        const q = query(invoicesRef, where('uniqueIdentifier', 'in', Array.from(uniqueIdentifiers)));
-        const querySnapshot = await getDocs(q);
-        
-        const foundDuplicates = querySnapshot.docs.map(doc => doc.data() as Invoice);
-
-        if (foundDuplicates.length > 0) {
-            setDuplicateInvoices(foundDuplicates);
-            setIsDuplicateDialogOpen(true);
-        } else {
-            await executeSave(uniqueInvoicesToSave);
-        }
-    } catch (e) {
-        console.error("Error checking for duplicates:", e);
-        toast({ variant: 'destructive', title: "Lỗi kiểm tra dữ liệu", description: "Không thể kiểm tra hóa đơn trùng lặp." });
-    } finally {
-        if (duplicateInvoices.length === 0) { // Only stop spinner if not opening dialog
-            setIsSavingSession(false);
-        }
-    }
-};
-
-const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') => {
-    setIsDuplicateDialogOpen(false);
-    
-    if (choice === 'cancel') {
-        setIsSavingSession(false);
-        return;
-    }
-
-    const allInvoices = new Map<string, Omit<Invoice, 'id'>>();
-    mappedData.forEach(item => {
-        const invoiceNum = item['Số hóa đơn'];
-        if (!allInvoices.has(invoiceNum)) {
-            allInvoices.set(invoiceNum, {
-                importSessionId: '',
-                provider: item['Nhà cung cấp'],
-                invoiceDate: item['Ngày hóa đơn'],
-                sellerName: item['Nhà cung cấp'],
-                sellerTaxCode: item['Mã số thuế'],
-                sellerAddress: item['Địa chỉ'],
-                buyerName: item['Nhà thuốc'],
-                fileName: item['Tên file'],
-                portalLink: item['Link truy cập'],
-                accessCode: item['Mã truy cập'],
-            });
-        }
-    });
-
-    if (choice === 'overwrite') {
-        await executeSave(allInvoices, duplicateInvoices);
-    } else if (choice === 'skip') {
-        const duplicatesIds = new Set(duplicateInvoices.map(d => d.id));
-        const invoicesToSave = new Map<string, Omit<Invoice, 'id'>>();
-        allInvoices.forEach((value, key) => {
-            if (!duplicatesIds.has(key)) {
-                invoicesToSave.set(key, value);
-            }
-        });
-        if(invoicesToSave.size > 0){
-          await executeSave(invoicesToSave);
-        } else {
-          toast({ title: "Không có hóa đơn mới nào để lưu." });
-          setIsSavingSession(false);
-        }
-    }
-};
-
-
-
-  const handleFileProcessing = async (files: File[]) => {
-    if (files.length === 0) return;
-
-    setIsProcessingFiles(true);
-    setInvoiceData([]);
-    setUnmappedItems(new Map());
-    setAlreadyMappedItems(new Map());
-    setUnmappedSuppliers(new Map());
-    setProcessedFileNames([]);
-    setUploadedXmls({});
-
-    const allItems: ParsedInvoiceItem[] = [];
-    const finalFileNames: string[] = [];
-    const errors: string[] = [];
-    const newUploadedXmls: Record<string, string> = {};
-
-    for (const file of files) {
-      try {
-        if (file.name.toLowerCase().endsWith('.zip')) {
-          finalFileNames.push(file.name);
-          const zip = await JSZip.loadAsync(file);
-          
-          let invoiceFile = null;
-
-          // Try to find the invoice file in a specific order of priority
-          // 1. A file named 'invoice' that is not a directory
-          const rootInvoiceFile = zip.file('invoice');
-          if (rootInvoiceFile && !rootInvoiceFile.dir) {
-              invoiceFile = rootInvoiceFile;
-          } 
-          // 2. A file named 'invoice' inside 'itax' folder
-          else {
-              const itaxInvoiceFile = zip.file('itax/invoice');
-              if (itaxInvoiceFile && !itaxInvoiceFile.dir) {
-                  invoiceFile = itaxInvoiceFile;
-              }
-              // 3. Fallback to any file with .xml extension if others not found
-              else {
-                  const xmlFiles = zip.filter((relativePath, file) => {
-                      return !file.dir && relativePath.toLowerCase().endsWith('.xml');
-                  });
-                  if (xmlFiles.length > 0) {
-                      invoiceFile = xmlFiles[0]; // Take the first one found
-                  }
-              }
-          }
-          
-          if (invoiceFile) {
-            const content = await invoiceFile.async('string');
-            newUploadedXmls[file.name] = content;
-            // Use the zip file name for identification
-            const items = await processXmlFile(content, file.name);
-            allItems.push(...items);
-          } else {
-            errors.push(`Không tìm thấy file XML hóa đơn trong file ${file.name}`);
-          }
-        } else if (file.name.toLowerCase().endsWith('.xml')) {
-          finalFileNames.push(file.name);
-          const content = await file.text();
-          newUploadedXmls[file.name] = content;
-          const items = await processXmlFile(content, file.name);
-          allItems.push(...items);
-        }
-        // Silently ignore other file types
-      } catch (e: any) {
-        errors.push(e.message || `Lỗi xử lý file ${file.name}`);
-      }
-    }
-    
-    if (errors.length > 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Đã xảy ra lỗi xử lý tệp',
-        description: <div className="whitespace-pre-wrap">{errors.join('\n')}</div>,
-      });
-    }
-
-    const sortedData = allItems.sort((a, b) => {
-      const dateA = a['Ngày hóa đơn']?.split('/').reverse().join('') ?? '';
-      const dateB = b['Ngày hóa đơn']?.split('/').reverse().join('') ?? '';
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      return a['Số hóa đơn'].localeCompare(b['Số hóa đơn']);
-    });
-    
-    setInvoiceData(sortedData);
-    setProcessedFileNames(finalFileNames);
-    setUploadedXmls(newUploadedXmls);
-    setIsProcessingFiles(false);
-  };
-
-  const handleDownloadXml = useCallback((fileName: string) => {
-    const content = uploadedXmls[fileName];
-    if (!content) {
-      toast({
-        variant: 'destructive',
-        title: 'Lỗi',
-        description: `Không tìm thấy dữ liệu gốc của tệp ${fileName}`,
-      });
-      return;
-    }
-    const blob = new Blob([content], { type: 'application/xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName.endsWith('.xml') ? fileName : `${fileName}.xml`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [uploadedXmls, toast]);
-
-  const handleDownloadAllWarningXmls = useCallback(async () => {
-    const uniqueFileNames = Array.from(
-      new Set(warningData.map(item => item["Tên file"]).filter(Boolean))
-    );
-
-    if (uniqueFileNames.length === 0) {
-      toast({
-        title: 'Không có tệp để tải',
-        description: 'Danh sách cảnh báo hiện không có tệp XML nào.',
-      });
-      return;
-    }
-
-    const zip = new JSZip();
-    const missingFiles: string[] = [];
-
-    uniqueFileNames.forEach(fileName => {
-      const content = uploadedXmls[fileName];
-      if (!content) {
-        missingFiles.push(fileName);
-        return;
-      }
-      zip.file(fileName.endsWith('.xml') ? fileName : `${fileName}.xml`, content);
-    });
-
-    if (Object.keys(zip.files).length === 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Không thể tải tệp',
-        description: 'Không tìm thấy dữ liệu gốc của các tệp XML trong cảnh báo.',
-      });
-      return;
-    }
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `xml-canh-bao-${format(new Date(), 'yyyyMMdd-HHmmss')}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast({
-      title: 'Đã tải tệp cảnh báo',
-      description: `Đã nén ${Object.keys(zip.files).length} tệp XML không trùng.${missingFiles.length ? ` Thiếu dữ liệu gốc của ${missingFiles.length} tệp.` : ''}`,
-    });
-  }, [uploadedXmls, warningData, toast]);
-
-
-   const handleMappingFileSelect = (files: File[]) => {
-    if (files.length === 0) return;
-    const file = files[0];
-    setMappingFile(file);
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook: WorkBook = read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-        
-        if (jsonData.length < 1) {
-            toast({ variant: "destructive", title: "Tệp Excel trống", description: "Tệp không có dữ liệu." });
-            return;
-        }
-
-        const headers = jsonData[0].map(h => String(h));
-        const preview = jsonData.slice(1, 6); // Get up to 5 rows for preview
-
-        setMappingFileData({ headers, preview });
-        setIsMappingImportOpen(true);
-      } catch (error) {
-        toast({ variant: "destructive", title: "Lỗi đọc tệp Excel", description: "Không thể đọc hoặc phân tích tệp." });
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-  
-  const handleConfirmMappingImport = async (columnMap: MappingColumnMap) => {
-    if (!mappingFile || !currentUser || !firestore) return;
-    setIsImportingMappings(true);
-    
-    try {
-      const newMappingFromFile = await processMappingFile(mappingFile, columnMap);
-      
-      const batch = writeBatch(firestore);
-      newMappingFromFile.forEach((value, key) => {
-          const docRef = doc(firestore, 'users', currentUser.id, 'mappings', key);
-          batch.set(docRef, { ...value, id: key });
-      });
-
-      await batch.commit()
-        .then(() => {
-          toast({
-            title: 'Tải tệp ánh xạ thành công',
-            description: `Đã tải lên và lưu ${newMappingFromFile.size} ánh xạ vào cơ sở dữ liệu.`,
-          });
-          setMappingFile(null);
-          setMappingFileData(null);
-          setIsMappingImportOpen(false);
-        })
-        .catch(error => {
-          const permissionError = new FirestorePermissionError({
-            path: `batch write to users/${currentUser.id}/mappings`,
-            operation: 'write',
-            requestResourceData: { info: `Importing ${newMappingFromFile.size} mappings` }
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        });
-
-    } catch (e: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Lỗi xử lý tệp ánh xạ',
-        description: e.message,
-      });
-    } finally {
-        setIsImportingMappings(false);
-    }
-  };
-
-  const handleSupplierFileSelect = (files: File[]) => {
-    if (files.length === 0) return;
-    const file = files[0];
-    setSupplierFile(file);
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-
-        if (jsonData.length < 1) {
-          toast({ variant: "destructive", title: "Tệp Excel trống" });
-          return;
-        }
-
-        const headers = jsonData[0].map(h => String(h));
-        const preview = jsonData.slice(1, 6);
-
-        setSupplierFileData({ headers, preview });
-        setIsSupplierImportOpen(true);
-      } catch (error) {
-        toast({ variant: "destructive", title: "Lỗi đọc tệp Excel" });
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  const handleConfirmSupplierImport = async (columnMap: SupplierColumnMap) => {
-    if (!supplierFile || !currentUser || !firestore) return;
-    setIsImportingSuppliers(true);
-
-    try {
-      const newSuppliers = await processSupplierFile(supplierFile, columnMap);
-      const batch = writeBatch(firestore);
-      newSuppliers.forEach((value, key) => {
-        const docRef = doc(firestore, 'users', currentUser.id, 'suppliers', key);
-        batch.set(docRef, { ...value, id: key });
-      });
-
-      await batch.commit()
-        .then(() => {
-          toast({
-            title: 'Tải tệp nhà cung cấp thành công',
-            description: `Đã tải lên và lưu ${newSuppliers.size} nhà cung cấp.`,
-          });
-          setSupplierFile(null);
-          setSupplierFileData(null);
-          setIsSupplierImportOpen(false);
-        })
-        .catch(error => {
-          const permissionError = new FirestorePermissionError({
-            path: `batch write to users/${currentUser.id}/suppliers`,
-            operation: 'write',
-            requestResourceData: { info: `Importing ${newSuppliers.size} suppliers` }
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        });
-
-    } catch (e: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Lỗi xử lý tệp nhà cung cấp',
-        description: e.message,
-      });
-    } finally {
-        setIsImportingSuppliers(false);
-    }
-  };
 
   const handleUpdateUnmappedItem = (updatedItem: { id: string; newValues: Partial<Mapping> }) => {
     const { id, newValues } = updatedItem;
@@ -1165,30 +615,6 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
     }
   };
 
-  const handleExport = (data: ParsedInvoiceItem[], type: 'goc' | 'anhxa') => {
-    if (data.length === 0) {
-        toast({
-            variant: "destructive",
-            title: "Không có dữ liệu",
-            description: "Không có dữ liệu để xuất.",
-        });
-        return;
-    }
-    exportToExcel(data, type, supplierMapping);
-  };
-  
-  const handleExportViettel = (data: ParsedInvoiceItem[]) => {
-    if (data.length === 0) {
-        toast({
-            variant: "destructive",
-            title: "Không có dữ liệu",
-            description: "Không có dữ liệu để xuất.",
-        });
-        return;
-    }
-    exportToExcelViettel(data, supplierMapping);
-  };
-  
   const currentUnmappedList = useMemo(() => {
     let list = Array.from(unmappedItems.values());
     if (unmappedDataSearch) {
@@ -1213,75 +639,6 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
     }
     return list;
   }, [alreadyMappedItems, alreadyMappedSearch]);
-
- const handleAuthAction = async (action: 'login' | 'logout' | 'updatePassword', credentials?: {username?: string, password?: string, newPassword?: string}) => {
-    if (!firestore) return;
-    setAuthError(null);
-
-    if (action === 'login') {
-        const { username, password } = credentials!;
-        if (!username || !password) {
-            setAuthError('Vui lòng nhập tên đăng nhập và mật khẩu.');
-            return;
-        }
-        
-        try {
-            const usersRef = collection(firestore, 'users');
-            const q = query(usersRef, where('username', '==', username));
-            const snapshot = await getDocs(q);
-
-            if (snapshot.empty) {
-                setAuthError('Tên đăng nhập không tồn tại.');
-                return;
-            }
-
-            const userDoc = snapshot.docs[0];
-            const userData = userDoc.data() as CustomUser;
-
-            if (userData.password !== password) {
-                setAuthError('Mật khẩu không đúng.');
-                return;
-            }
-            
-            const userToStore = { ...userData, id: userDoc.id };
-            localStorage.setItem('currentUser', JSON.stringify(userToStore));
-            setCurrentUser(userToStore);
-
-        } catch (error) {
-            console.error("Login error:", error);
-            setAuthError("Đã xảy ra lỗi khi đăng nhập.");
-        }
-    } else if (action === 'logout') {
-        localStorage.removeItem('currentUser');
-        setCurrentUser(null);
-        // Clear all processing data on logout
-        setInvoiceData([]);
-        setUnmappedItems(new Map());
-        setAlreadyMappedItems(new Map());
-        setUnmappedSuppliers(new Map());
-        setProcessedFileNames([]);
-
-    } else if (action === 'updatePassword') {
-        if (currentUser && credentials?.newPassword) {
-             const userDocRef = doc(firestore, 'users', currentUser.id);
-             await updateDoc(userDocRef, { password: credentials.newPassword })
-              .then(() => {
-                toast({ title: 'Thành công', description: 'Đã đổi mật khẩu của bạn.' });
-                setIsPasswordDialogOpen(false);
-                setNewPassword('');
-                setConfirmNewPassword('');
-              })
-              .catch(error => {
-                const permissionError = new FirestorePermissionError({
-                  path: userDocRef.path,
-                  operation: 'update',
-                  requestResourceData: { password: '***' },
-                });
-                errorEmitter.emit('permission-error', permissionError);
-              });
-        }
-    }
-};
 
   const AuthComponent = () => {
     const [username, setUsername] = useState('');
@@ -1326,20 +683,6 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
     );
   };
   
-  const handleChangePassword = async () => {
-    if (!newPassword) {
-      toast({ variant: 'destructive', title: 'Lỗi', description: 'Mật khẩu mới không được để trống.' });
-      return;
-    }
-    if (newPassword !== confirmNewPassword) {
-      toast({ variant: 'destructive', title: 'Lỗi', description: 'Mật khẩu xác nhận không khớp.' });
-      return;
-    }
-    setIsUpdatingPassword(true);
-    await handleAuthAction('updatePassword', { newPassword });
-    setIsUpdatingPassword(false);
-  };
-
   const canSaveSession = useMemo(() => {
     return invoiceData.length > 0 && currentUnmappedList.length === 0 && unmappedSuppliers.size === 0;
   }, [invoiceData, currentUnmappedList, unmappedSuppliers]);

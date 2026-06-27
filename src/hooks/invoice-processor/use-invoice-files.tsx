@@ -4,15 +4,55 @@ import { useCallback, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import JSZip from 'jszip';
 
-import { processXmlFile } from '@/lib/invoice-parser';
+import { processXmlFile, type DetectedSupplierParsingRule, type SupplierParsingRule } from '@/lib/invoice-parser';
 import type { InvoiceItem as ParsedInvoiceItem } from '@/types/invoice';
 import type { useToast } from '@/hooks/use-toast';
 
 type Toast = ReturnType<typeof useToast>['toast'];
+const SUPPLIER_PARSING_RULES_STORAGE_KEY = 'invoiceSupplierParsingRules:v1';
 
 interface UseInvoiceFilesOptions {
   toast: Toast;
   onResetProcessingState: () => void;
+}
+
+function loadSupplierParsingRules(): SupplierParsingRule[] {
+  try {
+    const raw = localStorage.getItem(SUPPLIER_PARSING_RULES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('Could not load supplier parsing rules', error);
+    return [];
+  }
+}
+
+function saveSupplierParsingRules(rules: SupplierParsingRule[]) {
+  localStorage.setItem(SUPPLIER_PARSING_RULES_STORAGE_KEY, JSON.stringify(rules));
+}
+
+function mergeDetectedRules(existingRules: SupplierParsingRule[], detectedRules: DetectedSupplierParsingRule[]) {
+  const merged = new Map<string, SupplierParsingRule>();
+
+  existingRules.forEach(rule => {
+    merged.set(`${rule.supplierTaxCode}-${rule.kind}`, rule);
+  });
+
+  let addedCount = 0;
+  detectedRules.forEach(rule => {
+    const key = `${rule.supplierTaxCode}-${rule.kind}`;
+    if (!merged.has(key)) {
+      const { evidence, ...ruleToSave } = rule;
+      merged.set(key, ruleToSave);
+      addedCount++;
+    }
+  });
+
+  return {
+    rules: Array.from(merged.values()),
+    addedCount,
+  };
 }
 
 export function useInvoiceFiles({ toast, onResetProcessingState }: UseInvoiceFilesOptions) {
@@ -48,6 +88,14 @@ export function useInvoiceFiles({ toast, onResetProcessingState }: UseInvoiceFil
     const finalFileNames: string[] = [];
     const errors: string[] = [];
     const newUploadedXmls: Record<string, string> = {};
+    const supplierParsingRules = loadSupplierParsingRules();
+    const detectedRuleMap = new Map<string, DetectedSupplierParsingRule>();
+    const parserOptions = {
+      supplierRules: supplierParsingRules,
+      onSupplierRuleDetected: (rule: DetectedSupplierParsingRule) => {
+        detectedRuleMap.set(`${rule.supplierTaxCode}-${rule.kind}`, rule);
+      },
+    };
 
     for (const file of files) {
       try {
@@ -77,7 +125,7 @@ export function useInvoiceFiles({ toast, onResetProcessingState }: UseInvoiceFil
           if (invoiceFile) {
             const content = await invoiceFile.async('string');
             newUploadedXmls[file.name] = content;
-            const items = await processXmlFile(content, file.name);
+            const items = await processXmlFile(content, file.name, parserOptions);
             allItems.push(...items);
           } else {
             errors.push(`Không tìm thấy file XML hóa đơn trong file ${file.name}`);
@@ -86,7 +134,7 @@ export function useInvoiceFiles({ toast, onResetProcessingState }: UseInvoiceFil
           finalFileNames.push(file.name);
           const content = await file.text();
           newUploadedXmls[file.name] = content;
-          const items = await processXmlFile(content, file.name);
+          const items = await processXmlFile(content, file.name, parserOptions);
           allItems.push(...items);
         }
       } catch (e: any) {
@@ -100,6 +148,17 @@ export function useInvoiceFiles({ toast, onResetProcessingState }: UseInvoiceFil
         title: 'Đã xảy ra lỗi xử lý tệp',
         description: <div className="whitespace-pre-wrap">{errors.join('\n')}</div>,
       });
+    }
+
+    if (detectedRuleMap.size > 0) {
+      const { rules, addedCount } = mergeDetectedRules(supplierParsingRules, Array.from(detectedRuleMap.values()));
+      if (addedCount > 0) {
+        saveSupplierParsingRules(rules);
+        toast({
+          title: 'Đã ghi nhớ quy tắc đọc XML',
+          description: `Đã lưu ${addedCount} quy tắc theo mã số thuế nhà cung cấp để dùng cho những lần đọc sau.`,
+        });
+      }
     }
 
     const sortedData = allItems.sort((a, b) => {

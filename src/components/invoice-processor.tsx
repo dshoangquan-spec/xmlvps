@@ -658,6 +658,56 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
     URL.revokeObjectURL(url);
   }, [uploadedXmls, toast]);
 
+  const handleDownloadAllWarningXmls = useCallback(async () => {
+    const uniqueFileNames = Array.from(
+      new Set(warningData.map(item => item["Tên file"]).filter(Boolean))
+    );
+
+    if (uniqueFileNames.length === 0) {
+      toast({
+        title: 'Không có tệp để tải',
+        description: 'Danh sách cảnh báo hiện không có tệp XML nào.',
+      });
+      return;
+    }
+
+    const zip = new JSZip();
+    const missingFiles: string[] = [];
+
+    uniqueFileNames.forEach(fileName => {
+      const content = uploadedXmls[fileName];
+      if (!content) {
+        missingFiles.push(fileName);
+        return;
+      }
+      zip.file(fileName.endsWith('.xml') ? fileName : `${fileName}.xml`, content);
+    });
+
+    if (Object.keys(zip.files).length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Không thể tải tệp',
+        description: 'Không tìm thấy dữ liệu gốc của các tệp XML trong cảnh báo.',
+      });
+      return;
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `xml-canh-bao-${format(new Date(), 'yyyyMMdd-HHmmss')}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: 'Đã tải tệp cảnh báo',
+      description: `Đã nén ${Object.keys(zip.files).length} tệp XML không trùng.${missingFiles.length ? ` Thiếu dữ liệu gốc của ${missingFiles.length} tệp.` : ''}`,
+    });
+  }, [uploadedXmls, warningData, toast]);
+
 
    const handleMappingFileSelect = (files: File[]) => {
     if (files.length === 0) return;
@@ -1888,6 +1938,15 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
                             className="pl-10"
                         />
                     </div>
+                    <Button
+                      onClick={handleDownloadAllWarningXmls}
+                      disabled={warningData.length === 0}
+                      variant="destructive"
+                      className="w-full sm:w-auto"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Tải tất cả XML cảnh báo
+                    </Button>
                 </div>
               </CardHeader>
               <CardContent className="pt-6">

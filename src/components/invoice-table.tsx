@@ -54,7 +54,7 @@ export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50, showFil
   const hasMappedData = data.some(item => item['Mã hàng (gốc)']);
   
   const baseHeaders: (keyof InvoiceItem)[] = [
-    'Mã hàng', 'Tên hàng hóa', 'ĐVT', 'Số lượng', 'Đơn giá', 'Thành tiền', 'Số lô', 'Hạn dùng'
+    'Mã hàng', 'Tên hàng hóa', 'Nhà sản xuất', 'ĐVT', 'Số lượng', 'Đơn giá', 'Thành tiền', 'Số lô', 'Hạn dùng'
   ];
 
   let headers: (keyof InvoiceItem)[] = [...baseHeaders];
@@ -73,7 +73,8 @@ export function InvoiceTable({ data, searchTerm = '', itemsPerPage = 50, showFil
     switch (header) {
       case 'Mã hàng (gốc)': return 'w-[12%]';
       case 'Mã hàng': return 'w-[12%]';
-      case 'Tên hàng hóa': return showFileName ? 'w-[20%]' : 'w-[25%]';
+      case 'Tên hàng hóa': return showFileName ? 'w-[18%]' : 'w-[22%]';
+      case 'Nhà sản xuất': return 'w-[14%]';
       case 'ĐVT': return 'w-[8%]';
       case 'Số lượng': return 'w-[8%] text-right';
       case 'Đơn giá': return 'w-[10%] text-right';

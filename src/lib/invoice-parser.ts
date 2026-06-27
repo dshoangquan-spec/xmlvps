@@ -114,6 +114,26 @@ function getMappedExtra(item: Element, fieldName: string): string {
     return "";
 }
 
+function getDatePrefix(value: string): string {
+    const firstPart = value.split(";")[0]?.trim() || "";
+    return isLikelyExpiryDate(firstPart) ? firstPart : "";
+}
+
+function splitExtra2LotHsdd(value: string): [string, string] {
+    const parts = value.split(";").map(part => part.trim()).filter(Boolean);
+    if (parts.length < 2 || !isLikelyExpiryDate(parts[0])) return ["", ""];
+
+    const lastPart = parts[parts.length - 1];
+    return [lastPart && lastPart !== "0" ? lastPart : "", parts[0]];
+}
+
+function extractManufacturer(item: Element): string {
+    const extra1 = getMappedExtra(item, "extra1");
+    const firstPart = extra1.split(";")[0]?.trim() || "";
+    if (!firstPart.toLowerCase().startsWith("nsx:")) return "";
+    return firstPart.replace(/^nsx:\s*/i, "").trim();
+}
+
 function postProcessRows(rows: InvoiceItem[]): InvoiceItem[] {
     for (let i = 1; i < rows.length; i++) {
         const currentRow = rows[i];
@@ -188,6 +208,9 @@ function extractSoloHsdd(item: Element): [string, string] {
     for (const k of lotKeywords) {
         if (!solo && ttinMap.has(k)) {
             const foundVal = ttinMap.get(k)!;
+            if ((k === "extra1" || k === "extra01") && foundVal.trim().toLowerCase().startsWith("nsx:")) {
+                continue;
+            }
             if (foundVal && foundVal !== "0") {
                 solo = foundVal;
                 if (solo.startsWith("SLo=")) {
@@ -213,6 +236,12 @@ function extractSoloHsdd(item: Element): [string, string] {
     const genericExtra = ttinMap.get("extra");
     if (genericExtra && isLikelyExpiryDate(genericExtra)) {
         hsdd = genericExtra;
+    }
+    const extra2 = ttinMap.get("extra2") || ttinMap.get("extra02");
+    if (extra2) {
+        const [extra2Solo, extra2Hsdd] = splitExtra2LotHsdd(extra2);
+        if (extra2Solo) solo = extra2Solo;
+        if (extra2Hsdd) hsdd = extra2Hsdd;
     }
 
     const combinedKeys = ['remark', 'extra', 'ttinkhac'];
@@ -301,6 +330,7 @@ function processVnptOrMeInvoice(xmlDoc: Document, fileName: string): InvoiceItem
     for (const item of invoiceItems) {
         let rawTenHang = getText(item, "THHDVu");
         let [solo, hsdd] = extractSoloHsdd(item);
+        const nhaSanXuat = extractManufacturer(item);
         
         const fromName = extractFromItemName(rawTenHang);
         if (!solo) solo = fromName.solo;
@@ -331,6 +361,7 @@ function processVnptOrMeInvoice(xmlDoc: Document, fileName: string): InvoiceItem
             "STT": getText(item, "STT"),
             "Mã hàng": maHang,
             "Tên hàng hóa": tenHang,
+            "Nhà sản xuất": nhaSanXuat,
             "ĐVT": getText(item, "DVTinh"),
             "Số lượng": soLuong,
             "Đơn giá": donGia,
@@ -373,6 +404,7 @@ function processViettel(xmlDoc: Document, fileName: string): InvoiceItem[] {
     for (const item of Array.from(xmlDoc.querySelectorAll("Item"))) {
         let rawTenHang = getText(item, "ItemName");
         let [solo, hsdd] = extractSoloHsdd(item);
+        const nhaSanXuat = extractManufacturer(item);
         
         const fromName = extractFromItemName(rawTenHang);
         if (!solo) solo = fromName.solo;
@@ -393,6 +425,7 @@ function processViettel(xmlDoc: Document, fileName: string): InvoiceItem[] {
             "STT": getText(item, "LineNumber"),
             "Mã hàng": maHang,
             "Tên hàng hóa": tenHang,
+            "Nhà sản xuất": nhaSanXuat,
             "ĐVT": getText(item, "UnitName"),
             "Số lượng": soLuong,
             "Đơn giá": donGia,

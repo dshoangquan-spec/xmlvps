@@ -4,6 +4,7 @@ export interface InvoiceItem {
   'Mã hàng': string;
   'Mã hàng (gốc)'?: string;
   'Tên hàng hóa': string;
+  'Nhà sản xuất': string;
   'ĐVT': string;
   'Số lượng': number;
   'Đơn giá': number;

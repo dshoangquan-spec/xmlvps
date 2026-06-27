@@ -411,6 +411,7 @@ export default function InvoiceProcessor() {
                   lineNumber: itemData['STT'] || String(index + 1),
                   itemCode: itemData['Mã hàng'],
                   itemName: itemData['Tên hàng hóa'],
+                  manufacturer: itemData['Nhà sản xuất'],
                   unit: itemData['ĐVT'],
                   quantity: String(itemData['Số lượng']),
                   unitPrice: String(itemData['Đơn giá']),

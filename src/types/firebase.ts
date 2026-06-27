@@ -136,6 +136,7 @@ export interface InvoiceItem {
   lineNumber: string;
   itemCode: string;
   itemName: string;
+  manufacturer?: string;
   unit: string;
   quantity: string;
   unitPrice: string;

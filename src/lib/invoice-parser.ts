@@ -99,6 +99,21 @@ function splitCombinedSoloHsdd(val: string): [string, string] {
     return [val, ""];
 }
 
+function isLikelyExpiryDate(value: string): boolean {
+    const formatted = formatHsdd(value);
+    return /^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/.test(formatted);
+}
+
+function getMappedExtra(item: Element, fieldName: string): string {
+    const normalizedFieldName = fieldName.toLowerCase();
+    for (const ttin of Array.from(item.querySelectorAll("TTin"))) {
+        if (getText(ttin, "TTruong").toLowerCase() === normalizedFieldName) {
+            return getText(ttin, "DLieu");
+        }
+    }
+    return "";
+}
+
 function postProcessRows(rows: InvoiceItem[]): InvoiceItem[] {
     for (let i = 1; i < rows.length; i++) {
         const currentRow = rows[i];
@@ -160,10 +175,18 @@ function extractSoloHsdd(item: Element): [string, string] {
     let solo = "";
     let hsdd = "";
 
+    const extra1 = ttinMap.get("extra1") || ttinMap.get("extra01");
+    if (extra1?.includes(";")) {
+        const parts = extra1.split(";").map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 3 && parts[2] !== "0") {
+            solo = parts[2];
+        }
+    }
+
     // Ưu tiên các trường External2 cho số lô và External3 cho hạn dùng
     const lotKeywords = ["external2", "slo", "lotno", "số lô", "so lo", "so_lo", "extra1", "extra01", "lot", "batchno", "customfield1detail", "cột 0", "slo_combined"];
     for (const k of lotKeywords) {
-        if (ttinMap.has(k)) {
+        if (!solo && ttinMap.has(k)) {
             const foundVal = ttinMap.get(k)!;
             if (foundVal && foundVal !== "0") {
                 solo = foundVal;
@@ -185,6 +208,11 @@ function extractSoloHsdd(item: Element): [string, string] {
                 break;
             }
         }
+    }
+
+    const genericExtra = ttinMap.get("extra");
+    if (genericExtra && isLikelyExpiryDate(genericExtra)) {
+        hsdd = genericExtra;
     }
 
     const combinedKeys = ['remark', 'extra', 'ttinkhac'];
@@ -281,7 +309,16 @@ function processVnptOrMeInvoice(xmlDoc: Document, fileName: string): InvoiceItem
 
         if (solo === "0") solo = "Null";
 
-        let maHang = getText(item, "MHHDVu");
+        const maHangRaw = getText(item, "MHHDVu");
+        const extraRaw = getMappedExtra(item, "extra");
+        if (!solo && maHangRaw && !isLikelyExpiryDate(maHangRaw) && isLikelyExpiryDate(extraRaw)) {
+            solo = maHangRaw;
+        }
+        if (!hsdd && isLikelyExpiryDate(maHangRaw)) {
+            hsdd = formatHsdd(maHangRaw);
+        }
+
+        let maHang = maHangRaw;
         if (!maHang) maHang = sanitizeDocId(tenHang);
 
         const soLuong = parseFloat(getText(item, "SLuong")) || 0;

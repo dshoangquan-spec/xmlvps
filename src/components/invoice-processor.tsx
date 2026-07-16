@@ -1165,7 +1165,7 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
     }
   };
 
-  const handleExport = (data: ParsedInvoiceItem[], type: 'goc' | 'anhxa') => {
+  const handleExport = (data: ParsedInvoiceItem[], type: 'goc' | 'anhxa' | 'anhxa-km-phan-tram') => {
     if (data.length === 0) {
         toast({
             variant: "destructive",
@@ -1908,6 +1908,10 @@ const handleDuplicateChoice = async (choice: 'overwrite' | 'skip' | 'cancel') =>
                     <Button onClick={() => handleExport(mappedData, 'anhxa')} className="bg-accent hover:bg-accent/90 text-accent-foreground">
                       <Download className="mr-2 h-4 w-4" />
                       Xuất dữ liệu đã ánh xạ
+                    </Button>
+                    <Button onClick={() => handleExport(mappedData, 'anhxa-km-phan-tram')} className="bg-primary hover:bg-primary/90">
+                      <Download className="mr-2 h-4 w-4" />
+                      Xuất KM theo %
                     </Button>
                     <Button onClick={() => handleExportViettel(mappedData)} variant="destructive">
                       <Download className="mr-2 h-4 w-4" />

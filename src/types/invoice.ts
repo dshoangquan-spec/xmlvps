@@ -41,7 +41,7 @@ export interface ExportItem {
   'Số lượng': number;
   'Đơn vị nhập': string;
   'Đơn giá': number;
-  'Tổng chiết khấu': string;
+  'Tổng chiết khấu': string | number;
   'VAT %': string;
 }
 

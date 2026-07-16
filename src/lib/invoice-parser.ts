@@ -2,8 +2,29 @@
 import { format, parse, isValid } from 'date-fns';
 import type { InvoiceItem } from '@/types/invoice';
 
+export type SupplierParsingRuleKind = 'item-code-as-lot-extra2-hsd';
+
+export interface SupplierParsingRule {
+    supplierTaxCode: string;
+    supplierName?: string;
+    kind: SupplierParsingRuleKind;
+    source?: 'auto' | 'manual';
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface DetectedSupplierParsingRule extends SupplierParsingRule {
+    evidence: string;
+}
+
+export interface InvoiceParserOptions {
+    supplierRules?: SupplierParsingRule[];
+    onSupplierRuleDetected?: (rule: DetectedSupplierParsingRule) => void;
+}
+
 const getText = (element: Element | Document | null, selector: string) => element?.querySelector(selector)?.textContent?.trim() ?? '';
 const sanitizeDocId = (id: string) => id.replace(/\//g, '-');
+const normalizeTaxCode = (taxCode: string) => taxCode.replace(/\D/g, '');
 
 function detectProvider(xmlDoc: Document): 'VNPT_or_MeInvoice' | 'Viettel' | 'Unknown' {
     if (xmlDoc.querySelector("HHDVu")) {
@@ -112,6 +133,22 @@ function getMappedExtra(item: Element, fieldName: string): string {
         }
     }
     return "";
+}
+
+function findSupplierRule(options: InvoiceParserOptions | undefined, taxCode: string, kind: SupplierParsingRuleKind): SupplierParsingRule | undefined {
+    const normalizedTaxCode = normalizeTaxCode(taxCode);
+    return options?.supplierRules?.find(rule => normalizeTaxCode(rule.supplierTaxCode) === normalizedTaxCode && rule.kind === kind);
+}
+
+function extractHsdFromExtra2(value: string): string {
+    const match = value.match(/(?:^|[;\s])HSD\s*:?\s*([^;]+)/i);
+    return match?.[1]?.trim() || "";
+}
+
+function isStrongItemCodeLotPattern(maHangRaw: string, extra2: string): boolean {
+    if (!maHangRaw || !extra2) return false;
+    if (!extractHsdFromExtra2(extra2)) return false;
+    return /quy\s*đổi|quy\s*doi/i.test(extra2);
 }
 
 function getDatePrefix(value: string): string {
@@ -300,7 +337,7 @@ function extractFromItemName(tenHang: string): { name: string, solo: string, hsd
     return { name: cleanedName, solo, hsdd };
 }
 
-function processVnptOrMeInvoice(xmlDoc: Document, fileName: string): InvoiceItem[] {
+function processVnptOrMeInvoice(xmlDoc: Document, fileName: string, options?: InvoiceParserOptions): InvoiceItem[] {
     const nban = xmlDoc.querySelector("NBan");
     const ten_ncc = getText(nban, "Ten");
     const mst_ncc = getText(nban, "MST");
@@ -340,6 +377,32 @@ function processVnptOrMeInvoice(xmlDoc: Document, fileName: string): InvoiceItem
         if (solo === "0") solo = "Null";
 
         const maHangRaw = getText(item, "MHHDVu");
+        const extra2Raw = getMappedExtra(item, "extra2") || getMappedExtra(item, "extra02");
+        const hasSupplierTaxCode = normalizeTaxCode(mst_ncc).length > 0;
+        const supplierRule = findSupplierRule(options, mst_ncc, 'item-code-as-lot-extra2-hsd');
+        const shouldApplyItemCodeLotRule = Boolean(supplierRule) || (hasSupplierTaxCode && isStrongItemCodeLotPattern(maHangRaw, extra2Raw));
+
+        if (shouldApplyItemCodeLotRule) {
+            const hsdFromExtra2 = extractHsdFromExtra2(extra2Raw);
+            if (maHangRaw && hsdFromExtra2) {
+                solo = maHangRaw;
+                hsdd = formatHsdd(hsdFromExtra2);
+
+                if (!supplierRule) {
+                    const now = new Date().toISOString();
+                    options?.onSupplierRuleDetected?.({
+                        supplierTaxCode: mst_ncc,
+                        supplierName: ten_ncc,
+                        kind: 'item-code-as-lot-extra2-hsd',
+                        source: 'auto',
+                        createdAt: now,
+                        updatedAt: now,
+                        evidence: 'MHHDVu contains lot number and Extra2 contains HSD/Quy doi pattern',
+                    });
+                }
+            }
+        }
+
         const extraRaw = getMappedExtra(item, "extra");
         if (!solo && maHangRaw && !isLikelyExpiryDate(maHangRaw) && isLikelyExpiryDate(extraRaw)) {
             solo = maHangRaw;
@@ -480,7 +543,7 @@ function getInvoiceInfo(soup: Document): [string, string] {
     return [so_hd, ngay_hd_raw];
 }
 
-export async function processXmlFile(xmlContent: string, fileName: string): Promise<InvoiceItem[]> {
+export async function processXmlFile(xmlContent: string, fileName: string, options?: InvoiceParserOptions): Promise<InvoiceItem[]> {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlContent, "application/xml");
 
@@ -493,7 +556,7 @@ export async function processXmlFile(xmlContent: string, fileName: string): Prom
     
     switch (provider) {
         case "VNPT_or_MeInvoice":
-            return processVnptOrMeInvoice(xmlDoc, fileName);
+            return processVnptOrMeInvoice(xmlDoc, fileName, options);
         case "Viettel":
             return processViettel(xmlDoc, fileName);
         default:

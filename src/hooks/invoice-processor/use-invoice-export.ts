@@ -8,7 +8,7 @@ import type { Supplier } from '@/types/firebase';
 type Toast = ReturnType<typeof useToast>['toast'];
 
 export function useInvoiceExport(toast: Toast, supplierMapping: Map<string, Supplier>) {
-  const handleExport = (data: ParsedInvoiceItem[], type: 'goc' | 'anhxa') => {
+  const handleExport = (data: ParsedInvoiceItem[], type: 'goc' | 'anhxa' | 'anhxa-km-phan-tram') => {
     if (data.length === 0) {
       toast({
         variant: "destructive",

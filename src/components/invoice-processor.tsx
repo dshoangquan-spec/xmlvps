@@ -1252,6 +1252,10 @@ export default function InvoiceProcessor() {
                       <Download className="mr-2 h-4 w-4" />
                       Xuất dữ liệu đã ánh xạ
                     </Button>
+                    <Button onClick={() => handleExport(mappedData, 'anhxa-km-phan-tram')} className="bg-primary hover:bg-primary/90">
+                      <Download className="mr-2 h-4 w-4" />
+                      Xuất KM theo %
+                    </Button>
                     <Button onClick={() => handleExportViettel(mappedData)} variant="destructive">
                       <Download className="mr-2 h-4 w-4" />
                       Xuất mẫu Viettel

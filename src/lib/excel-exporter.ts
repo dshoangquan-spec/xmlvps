@@ -45,7 +45,11 @@ const formatDateForExport = (dateString: string): string => {
 };
 
 
-function convertToExportFormat(data: InvoiceItem[], supplierMapping: Map<string, Supplier>): (ExportItem | {})[] {
+function convertToExportFormat(
+  data: InvoiceItem[],
+  supplierMapping: Map<string, Supplier>,
+  useDiscountPercentage = false
+): (ExportItem | {})[] {
   if (data.length === 0) {
     return [];
   }
@@ -71,6 +75,10 @@ function convertToExportFormat(data: InvoiceItem[], supplierMapping: Map<string,
     const formattedNgayHd = formatDateForExport(item['Ngày hóa đơn']);
     
     const itemDiscount = item['Chiết khấu dòng'] || 0;
+    const itemTotal = item['Thành tiền'] || 0;
+    const itemDiscountForExport = useDiscountPercentage && itemTotal > 0
+      ? itemDiscount / itemTotal
+      : itemDiscount;
 
     const exportItem: ExportItem = {
       'Mã nhà CC': supplierInfo?.supplierCode || '',
@@ -87,7 +95,9 @@ function convertToExportFormat(data: InvoiceItem[], supplierMapping: Map<string,
       'Số lượng': item['Số lượng'],
       'Đơn vị nhập': item['ĐVT'],
       'Đơn giá': item['Đơn giá'],
-      'Tổng chiết khấu': String(itemDiscount > 0 ? itemDiscount : 0), // Chiết khấu dòng
+      'Tổng chiết khấu': useDiscountPercentage
+        ? itemDiscountForExport
+        : String(itemDiscountForExport > 0 ? itemDiscountForExport : 0),
       'VAT %': isNaN(vatRate) ? '0' : String(vatRate),
     };
     
@@ -159,13 +169,18 @@ function convertToViettelExportFormat(data: InvoiceItem[], supplierMapping: Map<
 }
 
 
-export function exportToExcel(data: InvoiceItem[], type: 'goc' | 'anhxa', supplierMapping: Map<string, Supplier>) {
+export function exportToExcel(
+  data: InvoiceItem[],
+  type: 'goc' | 'anhxa' | 'anhxa-km-phan-tram',
+  supplierMapping: Map<string, Supplier>
+) {
   let dataToExport: (InvoiceItem | ExportItem | {})[];
   let headers: string[];
-  const isMappedExport = type === 'anhxa';
+  const isMappedExport = type !== 'goc';
+  const isDiscountPercentageExport = type === 'anhxa-km-phan-tram';
 
   if (isMappedExport) {
-    dataToExport = convertToExportFormat(data, supplierMapping);
+    dataToExport = convertToExportFormat(data, supplierMapping, isDiscountPercentageExport);
     headers = [
       'Mã nhà CC', 'Tên nhà cung cấp', 'Ngày HĐ', 'Số HĐ', 'Ngày lập', 'Tổng giảm giá', 'Thanh toán',
       'Mã hàng hóa', 'Tên hàng hóa', 'Số lô', 'Hạn sử dụng', 'Số lượng',
@@ -192,6 +207,17 @@ export function exportToExcel(data: InvoiceItem[], type: 'goc' | 'anhxa', suppli
             }
         }
     }
+
+    if (isDiscountPercentageExport) {
+      // O=Tổng chiết khấu: store the numeric ratio and display it as a percentage.
+      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+        const cell = worksheet[`O${R + 1}`];
+        if (cell && cell.v != null) {
+          cell.t = 'n';
+          cell.z = '0.00%';
+        }
+      }
+    }
   }
 
   const workbook = XLSX.utils.book_new();
@@ -205,7 +231,12 @@ export function exportToExcel(data: InvoiceItem[], type: 'goc' | 'anhxa', suppli
   worksheet['!cols'] = colWidths;
   
   const timestamp = new Date().strftime("%Y%m%d_%H%M%S");
-  const filename = `TongHop_HoaDon_${type === 'anhxa' ? 'DaAnhXa_TheoMau' : 'Goc'}_${timestamp}.xlsx`;
+  const exportLabel = type === 'goc'
+    ? 'Goc'
+    : isDiscountPercentageExport
+      ? 'DaAnhXa_KM_PhanTram'
+      : 'DaAnhXa_TheoMau';
+  const filename = `TongHop_HoaDon_${exportLabel}_${timestamp}.xlsx`;
   
   const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8" });

@@ -73,14 +73,24 @@ export default function AppNavigation() {
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('currentUser');
-      if (stored) {
-        setCurrentUser(JSON.parse(stored));
+    const syncUser = () => {
+      try {
+        const stored = localStorage.getItem('currentUser');
+        setCurrentUser(stored ? JSON.parse(stored) : null);
+      } catch (e) {
+        console.error(e);
+        setCurrentUser(null);
       }
-    } catch (e) {
-      console.error(e);
-    }
+    };
+
+    syncUser();
+    window.addEventListener('auth-change', syncUser);
+    window.addEventListener('storage', syncUser);
+
+    return () => {
+      window.removeEventListener('auth-change', syncUser);
+      window.removeEventListener('storage', syncUser);
+    };
   }, [pathname]);
 
   const handleLogout = () => {

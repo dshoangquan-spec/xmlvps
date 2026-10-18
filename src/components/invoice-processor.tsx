@@ -645,39 +645,59 @@ export default function InvoiceProcessor() {
     const [password, setPassword] = useState('');
     const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-    const onLoginClick = async () => {
-        setIsLoggingIn(true);
-        await handleAuthAction('login', { username, password });
-        setIsLoggingIn(false);
-    }
+    const onFormSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsLoggingIn(true);
+      await handleAuthAction('login', { username, password });
+      setIsLoggingIn(false);
+    };
 
     return (
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-sm">
-            <CardHeader className="text-center">
-                <CardTitle>Chào mừng bạn</CardTitle>
-                <CardDescription>Đăng nhập để tiếp tục</CardDescription>
+      <div className="flex min-h-[80vh] w-full flex-col items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-sm shadow-md border-border/80">
+          <form onSubmit={onFormSubmit}>
+            <CardHeader className="text-center pb-4">
+              <CardTitle className="text-2xl font-bold tracking-tight text-slate-900">Đăng nhập</CardTitle>
+              <CardDescription className="text-sm text-slate-600">Nhập thông tin tài khoản để tiếp tục</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="username">Tên đăng nhập</Label>
-                <Input id="username" type="text" placeholder="admin" value={username} onChange={(e) => setUsername(e.target.value)} required />
+                <Label htmlFor="username" className="text-slate-800 font-medium">Tên đăng nhập</Label>
+                <Input
+                  id="username"
+                  name="username"
+                  type="text"
+                  placeholder="Nhập tên đăng nhập"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoFocus
+                />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="password">Mật khẩu</Label>
-                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                <Label htmlFor="password" className="text-slate-800 font-medium">Mật khẩu</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  placeholder="Nhập mật khẩu"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
               </div>
               {authError && <p className="text-sm font-medium text-destructive">{authError}</p>}
             </CardContent>
-             <CardFooter className="flex flex-col gap-4">
-                <Button onClick={onLoginClick} className="w-full" disabled={isLoggingIn}>
-                  {isLoggingIn && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Đăng nhập
-                </Button>
-                <p className="text-xs text-muted-foreground text-center w-full pt-2">
-                    Dữ liệu của bạn được lưu trữ an toàn và riêng tư.
-                </p>
+            <CardFooter className="flex flex-col gap-4 pt-2">
+              <Button type="submit" className="w-full font-semibold" disabled={isLoggingIn}>
+                {isLoggingIn && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Đăng nhập
+              </Button>
+              <p className="text-xs text-slate-500 text-center w-full">
+                Dữ liệu của bạn được lưu trữ an toàn và riêng tư.
+              </p>
             </CardFooter>
+          </form>
         </Card>
       </div>
     );

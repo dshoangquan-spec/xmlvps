@@ -79,6 +79,9 @@ export function useInvoiceAuth({ firestore, toast, onLogout }: UseInvoiceAuthOpt
         const userToStore = { ...userData, id: userDoc.id };
         localStorage.setItem('currentUser', JSON.stringify(userToStore));
         setCurrentUser(userToStore);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('auth-change'));
+        }
       } catch (error) {
         console.error("Login error:", error);
         setAuthError("Đã xảy ra lỗi khi đăng nhập.");
@@ -86,6 +89,9 @@ export function useInvoiceAuth({ firestore, toast, onLogout }: UseInvoiceAuthOpt
     } else if (action === 'logout') {
       localStorage.removeItem('currentUser');
       setCurrentUser(null);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth-change'));
+      }
       onLogout();
     } else if (action === 'updatePassword') {
       if (currentUser && credentials?.newPassword) {

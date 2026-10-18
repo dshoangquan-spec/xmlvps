@@ -81,6 +81,7 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
   const [limit, setLimit] = useState(50);
 
   useEffect(() => {
+    if (!currentUser?.id || !firestore) {
       setItems([]);
       setIsLoading(false);
       return;

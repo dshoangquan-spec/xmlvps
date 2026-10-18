@@ -703,7 +703,7 @@ export default function InvoiceProcessor() {
   return (
     <div className="flex flex-col bg-background text-foreground transition-colors duration-300 pb-16">
 
-      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-8 space-y-8 flex-1">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-6 flex-1">
       {isMappingImportOpen && mappingFileData && (
         <MappingImportDialog
           isOpen={isMappingImportOpen}
@@ -808,92 +808,92 @@ export default function InvoiceProcessor() {
 
 
       {/* ---===[ KHU VỰC 1: TẢI TỆP ]===--- */}
-      <Card className="w-full shadow-lg border-border/40 bg-card/50 backdrop-blur-sm">
-        <CardHeader className="text-center pb-6 border-b border-border/40">
-          <CardTitle className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary via-indigo-500 to-accent bg-clip-text text-transparent pt-4">
-            CHƯƠNG TRÌNH QUẢN LÝ NHẬP HÀNG BẰNG XML
+      <Card className="w-full shadow-sm border border-slate-200 bg-card">
+        <CardHeader className="text-center pb-5 border-b border-slate-100">
+          <CardTitle className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 pt-1">
+            Chương trình quản lý nhập hàng bằng XML
           </CardTitle>
-          <CardDescription className="text-base text-muted-foreground mt-2">
+          <CardDescription className="text-sm sm:text-base text-slate-600 mt-1">
             Tải lên các tệp XML hóa đơn, tệp ánh xạ và tệp nhà cung cấp để bắt đầu đối chiếu dữ liệu.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <CardContent className="grid grid-cols-1 gap-6 md:grid-cols-3 pt-6">
           {/* Cột 1: Tải hóa đơn */}
-          <div className="flex flex-col bg-background/50 hover:bg-background/80 border border-border/60 hover:border-primary/50 rounded-xl p-5 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group h-full justify-between">
+          <div className="flex flex-col bg-card hover:bg-blue-50/20 border border-slate-200 hover:border-blue-400 rounded-xl p-5 shadow-xs hover:shadow-sm transition-all duration-200 group h-full justify-between">
             <div className="mb-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-primary/10 text-primary">1</span>
-                <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider bg-secondary/60 px-2 py-0.5 rounded-full">Hóa đơn</span>
+                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-blue-100 text-blue-700">1</span>
+                <span className="text-[11px] text-blue-700 font-bold uppercase tracking-wider bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">Hóa đơn</span>
               </div>
-              <h3 className="text-base font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">Hóa đơn XML/ZIP</h3>
-              <p className="text-xs text-muted-foreground">Tải lên tệp .xml lẻ hoặc tệp nén .zip chứa nhiều hóa đơn để hệ thống xử lý hàng loạt.</p>
+              <h3 className="text-base font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors">Hóa đơn XML/ZIP</h3>
+              <p className="text-xs sm:text-sm text-slate-600">Tải lên tệp .xml lẻ hoặc tệp nén .zip chứa nhiều hóa đơn để hệ thống xử lý hàng loạt.</p>
             </div>
             <FileUploader
               id="xml-invoices"
               onFilesSelected={handleFileProcessing}
               acceptedFileTypes=".xml,.zip"
-              uploadIcon={<FileUp className="h-10 w-10 text-primary transition-transform duration-300 group-hover:scale-110" />}
+              uploadIcon={<FileUp className="h-10 w-10 text-blue-600 transition-transform duration-200 group-hover:scale-105" />}
               buttonText="Chọn tệp XML hoặc ZIP"
               dragText="Kéo thả tệp XML/ZIP"
             />
           </div>
 
           {/* Cột 2: Tệp ánh xạ */}
-          <div className="flex flex-col bg-background/50 hover:bg-background/80 border border-border/60 hover:border-accent/50 rounded-xl p-5 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group h-full justify-between">
+          <div className="flex flex-col bg-card hover:bg-indigo-50/20 border border-slate-200 hover:border-indigo-400 rounded-xl p-5 shadow-xs hover:shadow-sm transition-all duration-200 group h-full justify-between">
             <div className="mb-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-accent/10 text-accent">2</span>
-                <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider bg-secondary/60 px-2 py-0.5 rounded-full">Danh mục</span>
+                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-indigo-100 text-indigo-700">2</span>
+                <span className="text-[11px] text-indigo-700 font-bold uppercase tracking-wider bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">Danh mục</span>
               </div>
               <div className="flex justify-between items-start mb-1">
-                <h3 className="text-base font-semibold text-foreground group-hover:text-accent transition-colors">Tệp ánh xạ (Excel)</h3>
-                <Button variant="outline" size="sm" className="h-7 px-2 text-xs rounded-lg border-accent/20 hover:bg-accent/10 hover:text-accent shrink-0 gap-1" onClick={() => setIsCatalogOpen(true)}>
+                <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Tệp ánh xạ (Excel)</h3>
+                <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs font-semibold rounded-lg border-indigo-200 text-indigo-700 hover:bg-indigo-50 shrink-0 gap-1" onClick={() => setIsCatalogOpen(true)}>
                   <BookMarked className="h-3.5 w-3.5" />
                   Xem ({mapping.size})
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">Ánh xạ mã nhà cung cấp sang mã nội bộ, đối chiếu danh mục vật tư.</p>
+              <p className="text-xs sm:text-sm text-slate-600">Ánh xạ mã nhà cung cấp sang mã nội bộ, đối chiếu danh mục vật tư.</p>
             </div>
             <FileUploader
               id="mapping"
               onFilesSelected={handleMappingFileSelect}
               acceptedFileTypes=".xlsx, .xls"
               multiple={false}
-              uploadIcon={<FileUp className="h-10 w-10 text-accent transition-transform duration-300 group-hover:scale-110" />}
+              uploadIcon={<FileUp className="h-10 w-10 text-indigo-600 transition-transform duration-200 group-hover:scale-105" />}
               buttonText="Chọn tệp Excel"
               dragText="Kéo thả tệp ánh xạ"
             />
           </div>
 
           {/* Cột 3: Tệp nhà cung cấp */}
-          <div className="flex flex-col bg-background/50 hover:bg-background/80 border border-border/60 hover:border-emerald-500/50 rounded-xl p-5 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 group h-full justify-between">
+          <div className="flex flex-col bg-card hover:bg-emerald-50/20 border border-slate-200 hover:border-emerald-400 rounded-xl p-5 shadow-xs hover:shadow-sm transition-all duration-200 group h-full justify-between">
             <div className="mb-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">3</span>
-                <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider bg-secondary/60 px-2 py-0.5 rounded-full">Đối tác</span>
+                <span className="flex items-center justify-center text-xs font-bold w-6 h-6 rounded-full bg-emerald-100 text-emerald-700">3</span>
+                <span className="text-[11px] text-emerald-700 font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Đối tác</span>
               </div>
               <div className="flex justify-between items-start mb-1">
-                <h3 className="text-base font-semibold text-foreground group-hover:text-emerald-500 transition-colors">Tệp nhà cung cấp</h3>
-                <Button variant="outline" size="sm" className="h-7 px-2 text-xs rounded-lg border-emerald-500/20 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 shrink-0 gap-1" onClick={() => setIsSupplierCatalogOpen(true)}>
+                <h3 className="text-base font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">Tệp nhà cung cấp</h3>
+                <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs font-semibold rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 shrink-0 gap-1" onClick={() => setIsSupplierCatalogOpen(true)}>
                   <Users className="h-3.5 w-3.5" />
                   Xem ({supplierMapping.size})
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">Tệp danh sách đối tác Excel chứa mã số thuế và thông tin định danh.</p>
+              <p className="text-xs sm:text-sm text-slate-600">Tệp danh sách đối tác Excel chứa mã số thuế và thông tin định danh.</p>
             </div>
             <FileUploader 
               id="supplier"
               onFilesSelected={handleSupplierFileSelect}
               acceptedFileTypes=".xlsx, .xls"
               multiple={false}
-              uploadIcon={<Users className="h-10 w-10 text-emerald-600 dark:text-emerald-400 transition-transform duration-300 group-hover:scale-110" />}
+              uploadIcon={<Users className="h-10 w-10 text-emerald-600 transition-transform duration-200 group-hover:scale-105" />}
               buttonText="Chọn tệp Excel"
               dragText="Kéo thả tệp NCC"
             />
           </div>
         </CardContent>
-         <CardFooter className="justify-end">
-            <Button variant="link" size="sm" onClick={() => setIsVersionHistoryOpen(true)}>
+         <CardFooter className="justify-end border-t border-slate-100 py-3">
+            <Button variant="ghost" size="sm" className="text-slate-600 hover:text-primary font-medium" onClick={() => setIsVersionHistoryOpen(true)}>
                 <History className="mr-2 h-4 w-4"/>
                 Xem lịch sử cập nhật
             </Button>

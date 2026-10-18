@@ -147,27 +147,22 @@ export default function AppNavigation() {
   return (
     <>
       <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-card/95 backdrop-blur-md shadow-xs">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Logo & Brand */}
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm group-hover:bg-primary/90 transition-colors">
+          <Link href="/" className="flex items-center gap-2.5 shrink-0 group mr-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm group-hover:bg-primary/90 transition-colors">
               <FileSpreadsheet className="h-5 w-5" />
             </div>
-            <div>
-              <div className="text-base font-bold tracking-tight text-foreground flex items-center gap-1.5">
-                <span>Thuốc Số XML</span>
-                <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                  Pro
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground hidden sm:block">
-                Xử lý hóa đơn XML Dược phẩm
-              </p>
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="text-base font-bold tracking-tight text-slate-900">Thuốc Số XML</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                Pro
+              </span>
             </div>
           </Link>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-1 shrink-0">
             {NAV_ITEMS.map((item) => {
               if (item.adminOnly && !isAdmin) return null;
               const isActive =
@@ -182,10 +177,10 @@ export default function AppNavigation() {
                     variant={isActive ? 'default' : 'ghost'}
                     size="sm"
                     className={cn(
-                      'h-9 px-3 text-sm font-medium transition-colors gap-2',
+                      'h-9 px-3 text-sm font-semibold transition-colors gap-2',
                       isActive
-                        ? 'bg-primary text-primary-foreground shadow-xs'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+                        ? 'bg-primary text-primary-foreground shadow-xs font-semibold'
+                        : 'text-slate-700 hover:text-primary hover:bg-slate-100'
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -197,18 +192,18 @@ export default function AppNavigation() {
           </nav>
 
           {/* User Profile & Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 border-border/80 px-2.5 hover:bg-muted/60"
+                  className="h-9 gap-2 border-slate-300 text-slate-800 px-3 hover:bg-slate-100 font-semibold"
                 >
                   <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <User className="h-3.5 w-3.5" />
                   </div>
-                  <span className="max-w-[120px] truncate text-xs font-semibold sm:max-w-[160px]">
+                  <span className="max-w-[140px] truncate text-xs font-semibold sm:max-w-[180px]">
                     {currentUser.fullName || currentUser.username}
                   </span>
                 </Button>

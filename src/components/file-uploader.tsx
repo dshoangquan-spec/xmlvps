@@ -76,8 +76,8 @@ export function FileUploader({
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         className={cn(
-          "w-full border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-300 cursor-pointer",
-          isDragging ? "border-primary bg-primary/10" : "border-border hover:border-primary/50 hover:bg-accent/50"
+          "w-full border-2 border-dashed rounded-xl p-7 text-center transition-colors duration-200 cursor-pointer bg-slate-50/80 hover:bg-blue-50/50",
+          isDragging ? "border-primary bg-primary/10" : "border-slate-300 hover:border-primary/60"
         )}
         onClick={handleButtonClick}
       >
@@ -89,29 +89,29 @@ export function FileUploader({
           onChange={handleFileChange}
           className="hidden"
         />
-        <div className="flex flex-col items-center gap-4 text-muted-foreground">
+        <div className="flex flex-col items-center gap-3">
           {uploadIcon}
-          <p className="font-semibold text-foreground">
+          <p className="font-semibold text-slate-900 text-sm sm:text-base">
             {dragText}
           </p>
-          <p className="text-sm">hoặc</p>
-          <Button type="button" variant="outline">
+          <p className="text-xs sm:text-sm font-medium text-slate-600">hoặc</p>
+          <Button type="button" variant="outline" className="border-slate-300 text-slate-900 hover:text-primary hover:border-primary bg-white font-semibold h-9 px-4 shadow-xs">
             {buttonText}
           </Button>
         </div>
       </div>
       {selectedFiles.length > 0 && (
         <div className="w-full text-left">
-          <h3 className="font-medium">Tệp đã chọn ({selectedFiles.length}):</h3>
-          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+          <h3 className="font-semibold text-slate-900 text-sm">Tệp đã chọn ({selectedFiles.length}):</h3>
+          <ul className="mt-2 space-y-1 text-sm text-slate-700 font-medium">
             {selectedFiles.slice(0, MAX_FILES_DISPLAY).map((file, i) => (
               <li key={i} className="flex items-center gap-2 truncate" title={file.name}>
-                <FileIcon className="h-4 w-4 flex-shrink-0" />
+                <FileIcon className="h-4 w-4 flex-shrink-0 text-primary" />
                 <span className="truncate">{file.name}</span>
               </li>
             ))}
             {selectedFiles.length > MAX_FILES_DISPLAY && (
-                 <li className="flex items-center gap-2 pl-6">
+                 <li className="flex items-center gap-2 pl-6 text-slate-600">
                     ... và {selectedFiles.length - MAX_FILES_DISPLAY} tệp khác.
                 </li>
             )}

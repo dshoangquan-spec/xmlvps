@@ -9,8 +9,9 @@ services:
     restart: unless-stopped
     init: true
     env_file: [.env]
+    ports:
+      - "127.0.0.1:3012:3000"
     networks:
-      - backend-network
       - shared-db-network
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
@@ -21,11 +22,6 @@ services:
     mem_reservation: 128m
     cpus: "0.50"
     pids_limit: 150
-    deploy:
-      resources:
-        limits:
-          memory: 400M
-          cpus: "0.50"
     logging:
       driver: json-file
       options:
@@ -33,7 +29,5 @@ services:
         max-file: "3"
 
 networks:
-  backend-network:
-    external: true
   shared-db-network:
     external: true

@@ -357,6 +357,7 @@ export default function CommunityCatalogManager({ currentUser }: CommunityCatalo
                 Hiện có <span className="font-semibold text-foreground">{total.toLocaleString('vi-VN')}</span> quy tắc.
               </CardDescription>
             </div>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -512,6 +512,7 @@ export default function MasterCatalogManager() {
                   <span className="font-semibold text-foreground">{total.toLocaleString('vi-VN')}</span> sản phẩm.
                 </CardDescription>
               </div>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --font-be-vietnam-pro: 'Be Vietnam Pro', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     /* Nền xám xanh nhẹ thanh lịch chuẩn SaaS */
     --background: 210 20% 98%;
     --foreground: 222 47% 11%;

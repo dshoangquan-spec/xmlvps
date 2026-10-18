@@ -38,7 +38,7 @@ import {
   CardContent
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Home, Loader2, Search, Download, Calendar as CalendarIcon, ArrowUpDown } from "lucide-react";
+import { Home, Loader2, Search, Download, Calendar as CalendarIcon, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Calendar } from "./ui/calendar";
@@ -77,9 +77,10 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
     key: "invoiceDate",
     direction: "desc",
   });
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
 
   useEffect(() => {
-    if (!currentUser?.id || !firestore) {
       setItems([]);
       setIsLoading(false);
       return;
@@ -191,6 +192,34 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
     return list;
   }, [filteredByDate, searchTerm, sortConfig, calculateVat]);
 
+  const total = sortedAndFiltered.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * limit;
+    return sortedAndFiltered.slice(start, start + limit);
+  }, [sortedAndFiltered, page, limit]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, date]);
+
+  const startRecord = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endRecord = Math.min(page * limit, total);
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let start = Math.max(1, page - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    for (let p = start; p <= end; p++) {
+      pages.push(p);
+    }
+    return pages;
+  }, [page, totalPages]);
 
   const requestSort = (key: SortableKeys) => {
     setSortConfig(prev => ({
@@ -233,7 +262,7 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
         <div className="flex justify-between items-center">
           <div>
             <CardTitle className="text-3xl font-bold text-primary">Tất cả mặt hàng của {isAdminView ? currentUser.fullName : 'bạn'}</CardTitle>
-            <CardDescription>Xem, tìm kiếm và lọc toàn bộ mặt hàng đã nhập.</CardDescription>
+            <CardDescription>Xem, tìm kiếm và lọc toàn bộ mặt hàng đã nhập (Tổng cộng: {total.toLocaleString('vi-VN')} mặt hàng).</CardDescription>
           </div>
           {!isAdminView && (
             <Link href="/" passHref>
@@ -305,7 +334,7 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
         </div>
 
         {/* TABLE */}
-        <ScrollArea className="h-[65vh] rounded-md border">
+        <ScrollArea className="h-[60vh] rounded-md border">
           <Table>
             <TableHeader className="sticky top-0 bg-muted z-10">
               <TableRow>
@@ -336,7 +365,7 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedAndFiltered.map((item, index) => {
+                paginatedItems.map((item, index) => {
                   const { unitPriceVat, totalAmountVat } = calculateVat(item);
                   return (
                     <TableRow key={item.id + "-" + index}>
@@ -357,6 +386,96 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
             </TableBody>
           </Table>
         </ScrollArea>
+
+        {/* Pagination Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span>Hiển thị</span>
+            <Select
+              value={String(limit)}
+              onValueChange={(val) => {
+                setLimit(Number(val));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[72px]">
+                <SelectValue placeholder={limit} />
+              </SelectTrigger>
+              <SelectContent side="top">
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>dòng / trang</span>
+            <span className="hidden md:inline pl-2 text-xs">
+              (Hiển thị {startRecord.toLocaleString('vi-VN')} - {endRecord.toLocaleString('vi-VN')} trong tổng số{' '}
+              {total.toLocaleString('vi-VN')} mặt hàng)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              title="Trang đầu"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              title="Trang trước"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <div className="flex items-center gap-1 px-1">
+              {pageNumbers.map((p) => (
+                <Button
+                  key={p}
+                  variant={p === page ? 'default' : 'outline'}
+                  size="sm"
+                  className={cn('h-8 w-8 p-0 text-xs', p === page && 'pointer-events-none')}
+                  onClick={() => setPage(p)}
+                >
+                  {p}
+                </Button>
+              ))}
+            </div>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              title="Trang tiếp"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              title="Trang cuối"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
+
+            <span className="text-xs pl-2">
+              Trang {page}/{totalPages || 1}
+            </span>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

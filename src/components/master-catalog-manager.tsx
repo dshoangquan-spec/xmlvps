@@ -1,22 +1,45 @@
-
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, writeBatch, getDocs, query, where } from 'firebase/firestore';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { read, utils, WorkBook } from 'xlsx';
 
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import type { MasterCatalogItem, User as CustomUser } from '@/types/firebase';
 import { exportMasterCatalogToExcel } from '@/lib/excel-exporter';
 import { cn } from '@/lib/utils';
 
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Home, Database, FileUp, Search, PlusCircle, Pencil, Trash2, Check, X, AlertTriangle, Download, ArrowUpDown, Settings2 } from 'lucide-react';
+import {
+  Loader2,
+  Home,
+  Database,
+  FileUp,
+  Search,
+  PlusCircle,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  AlertTriangle,
+  Download,
+  ArrowUpDown,
+  Settings2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from 'lucide-react';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +50,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -35,83 +58,93 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from '@/components/ui/dropdown-menu';
 import { MasterCatalogImportDialog, type ExcelData } from './master-catalog-import-dialog';
 import type { ColumnMap as MasterCatalogColumnMap } from '@/lib/master-catalog-parser';
 import { processMasterCatalogFile } from '@/lib/master-catalog-parser';
 
-
 const emptyItem: MasterCatalogItem = {
-    id: "",
-    productName: "",
-    activeIngredient: "",
-    concentration: "",
-    registrationNumber: "",
-    packaging: "",
-    unit: "",
-    smallestUnit: "",
-    conversionRate: 1,
+  id: '',
+  productName: '',
+  activeIngredient: '',
+  concentration: '',
+  registrationNumber: '',
+  packaging: '',
+  unit: '',
+  smallestUnit: '',
+  conversionRate: 1,
 };
-
 
 type SortableKeys = keyof MasterCatalogItem;
 
 const LOCAL_STORAGE_KEY = 'master-catalog-column-visibility';
 
 const initialColumnVisibility = {
-    id: true,
-    productName: true,
-    activeIngredient: true,
-    concentration: true,
-    registrationNumber: false,
-    packaging: false,
-    unit: true,
-    smallestUnit: true,
-    conversionRate: true,
+  id: true,
+  productName: true,
+  activeIngredient: true,
+  concentration: true,
+  registrationNumber: false,
+  packaging: false,
+  unit: true,
+  smallestUnit: true,
+  conversionRate: true,
 };
 
 export default function MasterCatalogManager() {
-  const firestore = useFirestore();
+  const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<CustomUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const { toast } = useToast();
 
+  // Pagination & Filtering state
+  const [items, setItems] = useState<MasterCatalogItem[]>([]);
+  const [total, setTotal] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(50);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' }>({
+    key: 'id',
+    direction: 'asc',
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Edit / Add state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<MasterCatalogItem | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newItemData, setNewItemData] = useState<MasterCatalogItem>(emptyItem);
 
+  // Import state
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importFileData, setImportFileData] = useState<ExcelData | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
 
-  const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' } | null>({ key: 'id', direction: 'asc' });
-
+  // Column visibility
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => {
     try {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                // Ensure all keys from initial are present
-                return { ...initialColumnVisibility, ...parsed };
-            }
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return { ...initialColumnVisibility, ...parsed };
         }
+      }
     } catch (error) {
-        console.error("Error reading from localStorage", error);
+      console.error('Error reading from localStorage', error);
     }
     return initialColumnVisibility;
   });
 
   useEffect(() => {
-      try {
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(columnVisibility));
-      } catch (error) {
-          console.error("Error writing to localStorage", error);
-      }
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(columnVisibility));
+    } catch (error) {
+      console.error('Error writing to localStorage', error);
+    }
   }, [columnVisibility]);
-
 
   const columnConfig: Array<{ key: keyof MasterCatalogItem; label: string; width: string }> = [
     { key: 'id', label: 'Mã SP', width: 'w-[12%]' },
@@ -125,7 +158,7 @@ export default function MasterCatalogManager() {
     { key: 'conversionRate', label: 'Hệ số QĐ', width: 'w-[8%]' },
   ];
 
-  // Fetch current user details to check role
+  // Fetch current user details
   useEffect(() => {
     if (!authChecked) {
       try {
@@ -143,76 +176,86 @@ export default function MasterCatalogManager() {
 
   const isAdmin = currentUser?.role === 'ADMIN';
 
-  const masterCatalogRef = useMemoFirebase(() => collection(firestore, 'master_catalog'), [firestore]);
-  const { data: catalog, isLoading: isLoadingCatalog } = useCollection<MasterCatalogItem>(masterCatalogRef);
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const catalogMap = useMemo(() => {
-    const map = new Map<string, MasterCatalogItem>();
-    catalog?.forEach(item => map.set(item.id, item));
-    return map;
-  }, [catalog]);
+  // Fetch paginated master catalog from PostgreSQL API
+  const fetchMasterCatalog = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+        sortBy: sortConfig.key,
+        sortOrder: sortConfig.direction,
+      });
+      if (debouncedSearch.trim()) {
+        params.set('search', debouncedSearch.trim());
+      }
 
-  const sortedAndFilteredCatalog = useMemo(() => {
-    if (!catalog) return [];
-    
-    let items = [...catalog];
+      const res = await fetch(`/api/master-catalog?${params.toString()}`);
+      if (!res.ok) throw new Error('Không thể tải danh mục sản phẩm');
 
-    // Filtering
-    if (searchTerm) {
-      const lowercasedFilter = searchTerm.toLowerCase();
-      items = items.filter(item =>
-        Object.values(item).some(value =>
-          String(value).toLowerCase().includes(lowercasedFilter)
-        )
-      );
+      const data = await res.json();
+      setItems(data.items || []);
+      setTotal(data.total || 0);
+      setTotalPages(data.totalPages || 1);
+    } catch (error: any) {
+      console.error('Fetch master catalog error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Lỗi nạp dữ liệu',
+        description: error.message || 'Không thể nạp danh mục chung.',
+      });
+    } finally {
+      setIsLoading(false);
     }
+  }, [page, limit, debouncedSearch, sortConfig, toast]);
 
-    // Sorting
-    if (sortConfig !== null) {
-        items.sort((a, b) => {
-            const valA = a[sortConfig.key];
-            const valB = b[sortConfig.key];
-            
-            if (valA == null && valB == null) return 0;
-            if (valA == null) return 1;
-            if (valB == null) return -1;
-            
-            let comparison = 0;
-            if (typeof valA === 'number' && typeof valB === 'number') {
-                comparison = valA - valB;
-            } else if (typeof valA === 'string' && typeof valB === 'string') {
-                comparison = valA.localeCompare(valB, 'vi', { sensitivity: 'base' });
-            } else {
-                comparison = String(valA).localeCompare(String(valB), 'vi', { sensitivity: 'base' });
-            }
+  useEffect(() => {
+    fetchMasterCatalog();
+  }, [fetchMasterCatalog]);
 
-            return sortConfig.direction === 'desc' ? -comparison : comparison;
-        });
-    }
-
-    return items;
-  }, [catalog, searchTerm, sortConfig]);
-  
   const requestSort = (key: SortableKeys) => {
     let direction: 'asc' | 'desc' = 'asc';
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
+    setPage(1);
   };
-  
-  const SortableHeader = ({ sortKey, children, className }: { sortKey: SortableKeys, children: React.ReactNode, className?: string }) => {
-    const isSorted = sortConfig?.key === sortKey;
+
+  const SortableHeader = ({
+    sortKey,
+    children,
+    className,
+  }: {
+    sortKey: SortableKeys;
+    children: React.ReactNode;
+    className?: string;
+  }) => {
+    const isSorted = sortConfig.key === sortKey;
     return (
-      <TableHead className={cn("font-semibold", className)}>
-        <Button variant="ghost" onClick={() => requestSort(sortKey)} className="px-2 py-1 h-auto -ml-2">
+      <TableHead className={cn('font-semibold', className)}>
+        <Button
+          variant="ghost"
+          onClick={() => requestSort(sortKey)}
+          className="px-2 py-1 h-auto -ml-2 hover:bg-muted/80 text-foreground"
+        >
           {children}
-          <ArrowUpDown className={cn("ml-2 h-3 w-3", isSorted ? "text-primary" : "text-muted-foreground/50")} />
+          <ArrowUpDown
+            className={cn('ml-2 h-3.5 w-3.5', isSorted ? 'text-primary' : 'text-muted-foreground/40')}
+          />
         </Button>
       </TableHead>
     );
   };
-
 
   const handleFileSelect = (files: File[]) => {
     if (files.length === 0 || !isAdmin) return;
@@ -227,45 +270,51 @@ export default function MasterCatalogManager() {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-        
+
         if (jsonData.length < 1) {
-            toast({ variant: "destructive", title: "Tệp Excel trống" });
-            return;
+          toast({ variant: 'destructive', title: 'Tệp Excel trống' });
+          return;
         }
 
-        const headers = jsonData[0].map(h => String(h));
+        const headers = jsonData[0].map((h) => String(h));
         const preview = jsonData.slice(1, 6);
 
         setImportFileData({ headers, preview });
         setIsImportOpen(true);
       } catch (error) {
-        toast({ variant: "destructive", title: "Lỗi đọc tệp Excel" });
+        toast({ variant: 'destructive', title: 'Lỗi đọc tệp Excel' });
       }
     };
     reader.readAsArrayBuffer(file);
   };
-  
+
   const handleConfirmImport = async (columnMap: MasterCatalogColumnMap) => {
-    if (!importFile || !isAdmin || !firestore) return;
+    if (!importFile || !isAdmin) return;
 
     try {
-      const newItems = await processMasterCatalogFile(importFile, columnMap);
-      const batch = writeBatch(firestore);
-      newItems.forEach((value, key) => {
-          const docRef = doc(firestore, 'master_catalog', key);
-          batch.set(docRef, { ...value, id: key });
+      const newItemsMap = await processMasterCatalogFile(importFile, columnMap);
+      const itemsArray = Array.from(newItemsMap.entries()).map(([id, item]) => ({
+        ...item,
+        id,
+      }));
+
+      const res = await fetch('/api/master-catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(itemsArray),
       });
-      await batch.commit();
+
+      if (!res.ok) throw new Error('Lưu dữ liệu nhập Excel thất bại');
 
       toast({
         title: 'Tải lên danh mục thành công',
-        description: `Đã tải lên và lưu ${newItems.size} sản phẩm.`,
+        description: `Đã lưu ${itemsArray.length.toLocaleString('vi-VN')} sản phẩm vào CSDL.`,
       });
-      
+
       setImportFile(null);
       setImportFileData(null);
       setIsImportOpen(false);
-
+      fetchMasterCatalog();
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Lỗi xử lý tệp danh mục', description: e.message });
     }
@@ -289,7 +338,7 @@ export default function MasterCatalogManager() {
 
   const handleInputChange = (field: keyof MasterCatalogItem, value: string | number, isNew: boolean) => {
     const processValue = (prev: MasterCatalogItem | null) => {
-      const newPrev = prev ? {...prev} : {...emptyItem};
+      const newPrev = prev ? { ...prev } : { ...emptyItem };
       if (field === 'conversionRate') {
         const numValue = typeof value === 'string' ? parseFloat(value) : value;
         newPrev[field] = isNaN(numValue) ? 1 : numValue;
@@ -297,10 +346,10 @@ export default function MasterCatalogManager() {
         newPrev[field as Exclude<keyof MasterCatalogItem, 'conversionRate'>] = value as string;
       }
       return newPrev;
-    }
-    
+    };
+
     if (isNew) {
-        setNewItemData(processValue);
+      setNewItemData(processValue);
     } else if (editFormData) {
       setEditFormData(processValue);
     }
@@ -308,16 +357,25 @@ export default function MasterCatalogManager() {
 
   const handleSaveNew = async () => {
     if (!isAdmin || !newItemData.id || !newItemData.productName) {
-        toast({ variant: 'destructive', title: 'Thiếu thông tin', description: 'Mã SP và Tên SP là bắt buộc.' });
-        return;
+      toast({ variant: 'destructive', title: 'Thiếu thông tin', description: 'Mã SP và Tên SP là bắt buộc.' });
+      return;
     }
-    if (catalogMap.has(newItemData.id)) {
-        toast({ variant: 'destructive', title: 'Mã sản phẩm đã tồn tại.' });
-        return;
+
+    try {
+      const res = await fetch('/api/master-catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newItemData),
+      });
+
+      if (!res.ok) throw new Error('Không thể thêm sản phẩm');
+
+      toast({ title: 'Thêm sản phẩm thành công' });
+      handleCancelAdd();
+      fetchMasterCatalog();
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Lỗi', description: e.message });
     }
-    await addDoc(collection(firestore, 'master_catalog'), newItemData);
-    toast({ title: 'Thêm sản phẩm thành công' });
-    handleCancelAdd();
   };
 
   const handleSaveEdit = async () => {
@@ -325,268 +383,544 @@ export default function MasterCatalogManager() {
       toast({ variant: 'destructive', title: 'Thiếu thông tin', description: 'Mã SP và Tên SP là bắt buộc.' });
       return;
     }
-    const originalDocRef = doc(firestore, 'master_catalog', editingId);
 
-    // If ID is changed, we must delete old doc and create new one
-    if (editingId !== editFormData.id) {
-        if (catalogMap.has(editFormData.id)) {
-            toast({ variant: 'destructive', title: 'Mã sản phẩm mới đã tồn tại.' });
-            return;
-        }
-        const newDocRef = doc(firestore, 'master_catalog', editFormData.id);
-        const batch = writeBatch(firestore);
-        batch.delete(originalDocRef);
-        batch.set(newDocRef, editFormData);
-        await batch.commit();
-    } else {
-        await updateDoc(originalDocRef, editFormData as any);
+    try {
+      // If ID changed, delete old one
+      if (editingId !== editFormData.id) {
+        await fetch(`/api/master-catalog?id=${encodeURIComponent(editingId)}`, { method: 'DELETE' });
+      }
+
+      const res = await fetch('/api/master-catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editFormData),
+      });
+
+      if (!res.ok) throw new Error('Không thể lưu cập nhật');
+
+      toast({ title: 'Cập nhật sản phẩm thành công' });
+      handleCancelEdit();
+      fetchMasterCatalog();
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Lỗi', description: e.message });
     }
-    toast({ title: 'Cập nhật sản phẩm thành công' });
-    handleCancelEdit();
   };
 
   const handleDelete = async (id: string) => {
     if (!isAdmin) return;
-    await deleteDoc(doc(firestore, 'master_catalog', id));
-    toast({ title: 'Đã xóa sản phẩm' });
-  };
-  
-  const handleDeleteAll = async () => {
-    if (!isAdmin || !catalog) return;
-    const batch = writeBatch(firestore);
-    catalog.forEach(item => {
-        const docRef = doc(firestore, 'master_catalog', item.id);
-        batch.delete(docRef);
-    });
-    await batch.commit();
-    toast({ title: 'Đã xóa toàn bộ danh mục' });
-  };
-  
-  const handleExport = () => {
-    if (sortedAndFilteredCatalog.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Không có dữ liệu",
-        description: "Không có sản phẩm nào trong danh mục để xuất.",
-      });
-      return;
+    try {
+      const res = await fetch(`/api/master-catalog?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Không thể xóa sản phẩm');
+
+      toast({ title: 'Đã xóa sản phẩm thành công' });
+      fetchMasterCatalog();
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Lỗi', description: e.message });
     }
-    exportMasterCatalogToExcel(sortedAndFilteredCatalog);
-    toast({
-      title: "Đang xuất file Excel...",
-      description: `Sẽ tải về ${sortedAndFilteredCatalog.length} sản phẩm.`
-    });
   };
 
-  if (!authChecked) {
-    return (
-        <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-4">
-            <Loader2 className="h-16 w-16 animate-spin text-primary" />
-        </div>
-    );
-  }
+  const handleDeleteAll = async () => {
+    if (!isAdmin) return;
+    try {
+      const res = await fetch('/api/master-catalog?all=true', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Không thể xóa toàn bộ danh mục');
+
+      toast({ title: 'Đã xóa toàn bộ danh mục' });
+      fetchMasterCatalog();
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Lỗi', description: e.message });
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    toast({
+      title: 'Đang chuẩn bị tệp Excel...',
+      description: 'Hệ thống đang trích xuất dữ liệu danh mục chung.',
+    });
+
+    try {
+      const params = new URLSearchParams({
+        all: 'true',
+        sortBy: sortConfig.key,
+        sortOrder: sortConfig.direction,
+      });
+      if (debouncedSearch.trim()) {
+        params.set('search', debouncedSearch.trim());
+      }
+
+      const res = await fetch(`/api/master-catalog?${params.toString()}`);
+      if (!res.ok) throw new Error('Không thể tải toàn bộ danh mục để xuất');
+
+      const data = await res.json();
+      const exportList: MasterCatalogItem[] = data.items || [];
+
+      if (exportList.length === 0) {
+        toast({ variant: 'destructive', title: 'Không có dữ liệu', description: 'Danh mục hiện tại trống.' });
+        return;
+      }
+
+      exportMasterCatalogToExcel(exportList);
+      toast({
+        title: 'Tải xuống thành công!',
+        description: `Đã xuất ${exportList.length.toLocaleString('vi-VN')} sản phẩm ra file Excel.`,
+      });
+    } catch (error: any) {
+      console.error('Export error:', error);
+      toast({ variant: 'destructive', title: 'Lỗi xuất Excel', description: error.message });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const startRecord = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endRecord = Math.min(page * limit, total);
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let start = Math.max(1, page - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    for (let p = start; p <= end; p++) {
+      pages.push(p);
+    }
+    return pages;
+  }, [page, totalPages]);
 
   return (
-    <div className="space-y-8">
-      {importFileData && (
-        <MasterCatalogImportDialog
-          isOpen={isImportOpen}
-          onOpenChange={setIsImportOpen}
-          excelData={importFileData}
-          onConfirm={handleConfirmImport}
-        />
-      )}
-      <Card>
+    <>
+      <MasterCatalogImportDialog
+        isOpen={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        excelData={importFileData}
+        onConfirm={handleConfirmImport}
+      />
+      <Card className="shadow-sm border">
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
-                <Database className="h-8 w-8 text-primary" />
-                <div>
-                    <CardTitle className="text-3xl font-bold tracking-tight text-primary">
-                        Danh mục sản phẩm dùng chung
-                    </CardTitle>
-                    <CardDescription>
-                        Tìm kiếm và quản lý danh mục sản phẩm toàn hệ thống.
-                        Hiện có {isLoadingCatalog ? "..." : catalog?.length ?? 0} sản phẩm.
-                    </CardDescription>
-                </div>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Database className="h-8 w-8 text-primary shrink-0" />
+              <div>
+                <CardTitle className="text-2xl sm:text-3xl font-bold tracking-tight text-primary">
+                  Danh mục Sản phẩm dùng chung
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Danh mục chuẩn hóa để liên kết các mã hàng hóa từ nhiều nhà cung cấp khác nhau. Hiện có{' '}
+                  <span className="font-semibold text-foreground">{total.toLocaleString('vi-VN')}</span> sản phẩm.
+                </CardDescription>
+              </div>
             </div>
             <Link href="/" passHref>
-                <Button variant="outline"><Home className="mr-2 h-4 w-4" /> Về trang chính</Button>
+              <Button variant="outline" size="sm">
+                <Home className="mr-2 h-4 w-4" /> Về trang chính
+              </Button>
             </Link>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-                <div className="relative flex-grow">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                        placeholder={`Tìm kiếm trong ${catalog?.length ?? 0} sản phẩm...`}
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                    />
-                </div>
-                <div className='flex gap-2'>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline">
-                          <Settings2 className="mr-2 h-4 w-4" />
-                           Cột hiển thị
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Bật/tắt các cột</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {columnConfig.map(col => (
-                           <DropdownMenuCheckboxItem
-                            key={col.key}
-                            className="capitalize"
-                            checked={columnVisibility[col.key as keyof typeof columnVisibility]}
-                            onCheckedChange={(value) =>
-                              setColumnVisibility(prev => ({...prev, [col.key]: !!value}))
-                            }
-                          >
-                            {col.label}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button onClick={handleExport} variant="outline">
-                        <Download className="mr-2 h-4 w-4" /> Xuất ra Excel
-                    </Button>
-                    {isAdmin && (
-                      <>
-                        <label htmlFor="import-catalog" className="cursor-pointer">
-                            <Button asChild>
-                                <span><FileUp className="mr-2 h-4 w-4" /> Tải lên từ Excel</span>
-                            </Button>
-                            <input id="import-catalog" type="file" className="hidden" accept=".xlsx, .xls" onChange={(e) => handleFileSelect(e.target.files ? Array.from(e.target.files) : [])}/>
-                        </label>
-
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="destructive">
-                                    <Trash2 className="mr-2 h-4 w-4" /> Xóa toàn bộ
-                                </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="text-destructive"/>Xác nhận xóa toàn bộ?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        Hành động này sẽ xóa vĩnh viễn TOÀN BỘ sản phẩm trong danh mục chung. Dữ liệu không thể khôi phục. Bạn có chắc chắn muốn tiếp tục?
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>Hủy</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleDeleteAll} className="bg-destructive hover:bg-destructive/90">Xóa tất cả</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                        </>
-                    )}
-                </div>
+          {/* Controls Bar: Search & Action Buttons */}
+          <div className="flex flex-col lg:flex-row gap-3 justify-between items-center">
+            <div className="relative flex-grow w-full lg:max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={`Tìm theo mã, tên, hoạt chất, số đăng ký...`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 h-9"
+              />
             </div>
-            <div className="h-[60vh] overflow-auto rounded-md border">
-                <Table className="table-fixed">
-                    <TableHeader className="sticky top-0 z-10 bg-muted">
-                        <TableRow>
-                            {isAdmin && <TableHead className="w-[100px] text-center">Hành động</TableHead>}
-                            {columnConfig.filter(c => columnVisibility[c.key as keyof typeof columnVisibility]).map(col => (
-                               <SortableHeader key={col.key} sortKey={col.key as SortableKeys} className={col.width}>
-                                   {col.label}
-                               </SortableHeader>
-                            ))}
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                         {isAdmin && isAdding && (
-                            <TableRow>
-                                <TableCell className="text-center">
-                                    <div className="flex justify-center gap-2">
-                                        <Button variant="ghost" size="icon" className="text-green-600 hover:text-green-700" onClick={handleSaveNew}><Check className="h-4 w-4" /></Button>
-                                        <Button variant="ghost" size="icon" className="text-gray-600 hover:text-gray-700" onClick={handleCancelAdd}><X className="h-4 w-4" /></Button>
-                                    </div>
-                                </TableCell>
-                                {columnConfig.filter(c => columnVisibility[c.key as keyof typeof columnVisibility]).map(col => (
-                                     <TableCell key={col.key}>
-                                        <Input 
-                                            type={col.key === 'conversionRate' ? 'number' : 'text'}
-                                            value={newItemData[col.key as keyof MasterCatalogItem] as string | number} 
-                                            onChange={(e) => handleInputChange(col.key as keyof MasterCatalogItem, e.target.value, true)} 
-                                            placeholder={`${col.label}${col.key === 'id' || col.key === 'productName' ? ' (*)' : ''}`} 
-                                            className="h-8"
-                                        />
-                                    </TableCell>
-                                ))}
-                            </TableRow>
-                        )}
-                        {isLoadingCatalog ? (
-                            <TableRow><TableCell colSpan={isAdmin ? 9 : 8} className="h-24 text-center"><Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" /></TableCell></TableRow>
-                        ) : sortedAndFilteredCatalog.length > 0 ? (
-                            sortedAndFilteredCatalog.map(item => {
-                                const isEditing = editingId === item.id;
-                                return (
-                                    <TableRow key={item.id} className={isEditing ? 'bg-secondary' : ''}>
-                                        {isAdmin && (
-                                            <TableCell className="text-center">
-                                                {isEditing ? (
-                                                     <div className="flex justify-center gap-2">
-                                                        <Button variant="ghost" size="icon" className="text-green-600 hover:text-green-700" onClick={handleSaveEdit}><Check className="h-4 w-4" /></Button>
-                                                        <Button variant="ghost" size="icon" className="text-gray-600 hover:text-gray-700" onClick={handleCancelEdit}><X className="h-4 w-4" /></Button>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex justify-center gap-2">
-                                                        <Button variant="ghost" size="icon" className="text-primary hover:text-primary/90" onClick={() => handleEdit(item)}><Pencil className="h-4 w-4" /></Button>
-                                                        <AlertDialog>
-                                                            <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/90"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
-                                                            <AlertDialogContent>
-                                                                <AlertDialogHeader>
-                                                                    <AlertDialogTitle>Xóa sản phẩm này?</AlertDialogTitle>
-                                                                    <AlertDialogDescription>Bạn có chắc muốn xóa vĩnh viễn sản phẩm <span className='font-bold'>{item.productName}</span>?</AlertDialogDescription>
-                                                                </AlertDialogHeader>
-                                                                <AlertDialogFooter>
-                                                                    <AlertDialogCancel>Hủy</AlertDialogCancel>
-                                                                    <AlertDialogAction onClick={() => handleDelete(item.id)} className="bg-destructive hover:bg-destructive/90">Xóa</AlertDialogAction>
-                                                                </AlertDialogFooter>
-                                                            </AlertDialogContent>
-                                                        </AlertDialog>
-                                                    </div>
-                                                )}
-                                            </TableCell>
-                                        )}
-                                        {columnConfig.filter(c => columnVisibility[c.key as keyof typeof columnVisibility]).map(col => (
-                                             <TableCell key={col.key} className="break-words">
-                                                {isEditing && editFormData ? (
-                                                    <Input 
-                                                      type={col.key === 'conversionRate' ? 'number' : 'text'}
-                                                      value={editFormData[col.key as keyof MasterCatalogItem] as string | number} 
-                                                      onChange={(e) => handleInputChange(col.key as keyof MasterCatalogItem, e.target.value, false)} 
-                                                      className="h-8"/>
-                                                ): (
-                                                    item[col.key as keyof MasterCatalogItem]
-                                                )}
-                                            </TableCell>
-                                        ))}
-                                    </TableRow>
-                                );
-                            })
-                        ) : (
-                            <TableRow><TableCell colSpan={isAdmin ? 10 : 9} className="h-24 text-center text-muted-foreground">{searchTerm ? "Không tìm thấy sản phẩm nào." : "Danh mục trống."}</TableCell></TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-        </CardContent>
-        {isAdmin && !isAdding && (
-            <CardFooter>
-                <Button onClick={() => setIsAdding(true)}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Thêm sản phẩm mới
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+              {isAdmin && (
+                <Button
+                  onClick={() => {
+                    setIsAdding(true);
+                    setEditingId(null);
+                  }}
+                  disabled={isAdding}
+                  size="sm"
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" /> Thêm sản phẩm
                 </Button>
-            </CardFooter>
-        )}
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Settings2 className="mr-2 h-4 w-4" /> Cột hiển thị
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Tùy chỉnh cột hiển thị</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {columnConfig.map((col) => (
+                    <DropdownMenuCheckboxItem
+                      key={col.key}
+                      className="capitalize text-xs"
+                      checked={columnVisibility[col.key as keyof typeof columnVisibility]}
+                      onCheckedChange={(value) =>
+                        setColumnVisibility((prev) => ({ ...prev, [col.key]: !!value }))
+                      }
+                    >
+                      {col.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button
+                onClick={handleExport}
+                variant="outline"
+                size="sm"
+                disabled={isExporting || total === 0}
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" /> Đang xuất...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" /> Xuất ra Excel
+                  </>
+                )}
+              </Button>
+
+              {isAdmin && (
+                <>
+                  <label htmlFor="import-catalog" className="cursor-pointer">
+                    <Button asChild size="sm">
+                      <span>
+                        <FileUp className="mr-2 h-4 w-4" /> Tải lên từ Excel
+                      </span>
+                    </Button>
+                    <input
+                      id="import-catalog"
+                      type="file"
+                      className="hidden"
+                      accept=".xlsx, .xls"
+                      onChange={(e) => handleFileSelect(e.target.files ? Array.from(e.target.files) : [])}
+                    />
+                  </label>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="mr-2 h-4 w-4" /> Xóa toàn bộ
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                          <AlertTriangle className="text-destructive" />
+                          Xác nhận xóa toàn bộ?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Hành động này sẽ xóa vĩnh viễn TOÀN BỘ sản phẩm trong danh mục chung. Dữ liệu không
+                          thể khôi phục. Bạn có chắc chắn muốn tiếp tục?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Hủy</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDeleteAll}
+                          className="bg-destructive hover:bg-destructive/90"
+                        >
+                          Xóa tất cả
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="h-[60vh] overflow-auto rounded-md border">
+            <Table className="table-fixed">
+              <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur">
+                <TableRow>
+                  {isAdmin && <TableHead className="w-[90px] text-center">Hành động</TableHead>}
+                  {columnConfig
+                    .filter((c) => columnVisibility[c.key as keyof typeof columnVisibility])
+                    .map((col) => (
+                      <SortableHeader
+                        key={col.key}
+                        sortKey={col.key as SortableKeys}
+                        className={col.width}
+                      >
+                        {col.label}
+                      </SortableHeader>
+                    ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isAdmin && isAdding && (
+                  <TableRow className="bg-muted/50">
+                    <TableCell className="text-center">
+                      <div className="flex justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          onClick={handleSaveNew}
+                          title="Lưu"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:bg-muted"
+                          onClick={handleCancelAdd}
+                          title="Hủy"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    {columnConfig
+                      .filter((c) => columnVisibility[c.key as keyof typeof columnVisibility])
+                      .map((col) => (
+                        <TableCell key={col.key}>
+                          <Input
+                            type={col.key === 'conversionRate' ? 'number' : 'text'}
+                            value={newItemData[col.key as keyof MasterCatalogItem] as string | number}
+                            onChange={(e) =>
+                              handleInputChange(col.key as keyof MasterCatalogItem, e.target.value, true)
+                            }
+                            placeholder={`${col.label}${col.key === 'id' || col.key === 'productName' ? ' (*)' : ''}`}
+                            className="h-8 text-xs"
+                          />
+                        </TableCell>
+                      ))}
+                  </TableRow>
+                )}
+
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={isAdmin ? 10 : 9} className="h-40 text-center">
+                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                      <p className="mt-2 text-sm text-muted-foreground">Đang tải dữ liệu danh mục...</p>
+                    </TableCell>
+                  </TableRow>
+                ) : items.length > 0 ? (
+                  items.map((item) => {
+                    const isEditing = editingId === item.id;
+                    const currentData = isEditing ? editFormData : item;
+
+                    return (
+                      <TableRow
+                        key={item.id}
+                        className={cn('hover:bg-muted/40 transition-colors', isEditing && 'bg-muted/60')}
+                      >
+                        {isAdmin && (
+                          <TableCell className="text-center">
+                            {isEditing ? (
+                              <div className="flex justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  onClick={handleSaveEdit}
+                                  title="Lưu"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:bg-muted"
+                                  onClick={handleCancelEdit}
+                                  title="Hủy"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-primary hover:bg-primary/10"
+                                  onClick={() => handleEdit(item)}
+                                  title="Chỉnh sửa"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                      title="Xóa"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Xóa sản phẩm này?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Bạn có chắc muốn xóa vĩnh viễn sản phẩm{' '}
+                                        <span className="font-bold text-foreground">{item.productName}</span>?
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Hủy</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => handleDelete(item.id)}
+                                        className="bg-destructive hover:bg-destructive/90"
+                                      >
+                                        Xóa
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            )}
+                          </TableCell>
+                        )}
+                        {columnConfig
+                          .filter((c) => columnVisibility[c.key as keyof typeof columnVisibility])
+                          .map((col) => (
+                            <TableCell
+                              key={col.key}
+                              className={cn(
+                                col.key === 'id' && 'font-mono text-xs font-semibold text-primary',
+                                col.key === 'productName' && 'font-medium text-sm',
+                                (col.key === 'unit' || col.key === 'smallestUnit') && 'text-center text-xs',
+                                col.key === 'conversionRate' && 'text-center font-mono text-xs'
+                              )}
+                            >
+                              {isEditing && currentData ? (
+                                <Input
+                                  type={col.key === 'conversionRate' ? 'number' : 'text'}
+                                  value={currentData[col.key] as string | number}
+                                  onChange={(e) =>
+                                    handleInputChange(col.key, e.target.value, false)
+                                  }
+                                  className="h-8 text-xs"
+                                />
+                              ) : (
+                                (item[col.key] ?? '')
+                              )}
+                            </TableCell>
+                          ))}
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={isAdmin ? 10 : 9}
+                      className="h-32 text-center text-muted-foreground"
+                    >
+                      {debouncedSearch
+                        ? `Không tìm thấy sản phẩm nào khớp với "${debouncedSearch}".`
+                        : 'Danh mục sản phẩm dùng chung trống.'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span>Hiển thị</span>
+              <Select
+                value={String(limit)}
+                onValueChange={(val) => {
+                  setLimit(Number(val));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[72px]">
+                  <SelectValue placeholder={limit} />
+                </SelectTrigger>
+                <SelectContent side="top">
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+              <span>dòng / trang</span>
+              <span className="hidden md:inline pl-2 text-xs">
+                (Hiển thị {startRecord.toLocaleString('vi-VN')} - {endRecord.toLocaleString('vi-VN')} trong tổng số{' '}
+                {total.toLocaleString('vi-VN')} sản phẩm)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setPage(1)}
+                disabled={page <= 1 || isLoading}
+                title="Trang đầu"
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || isLoading}
+                title="Trang trước"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <div className="flex items-center gap-1 px-1">
+                {pageNumbers.map((p) => (
+                  <Button
+                    key={p}
+                    variant={p === page ? 'default' : 'outline'}
+                    size="sm"
+                    className={cn('h-8 w-8 p-0 text-xs', p === page && 'pointer-events-none')}
+                    onClick={() => setPage(p)}
+                    disabled={isLoading}
+                  >
+                    {p}
+                  </Button>
+                ))}
+              </div>
+
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || isLoading}
+                title="Trang tiếp"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setPage(totalPages)}
+                disabled={page >= totalPages || isLoading}
+                title="Trang cuối"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+
+              <span className="text-xs pl-2">
+                Trang {page}/{totalPages || 1}
+              </span>
+            </div>
+          </div>
+        </CardContent>
       </Card>
-    </div>
+    </>
   );
 }

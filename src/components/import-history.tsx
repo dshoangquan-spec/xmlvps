@@ -9,8 +9,15 @@ import { useFirestore } from '@/firebase';
 import type { User as CustomUser, ImportSession, Invoice, InvoiceItem } from '@/types/firebase';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Home, Loader2, FileText, ChevronRight, Trash2, AlertTriangle, Search, ArrowUpDown, Download } from 'lucide-react';
+import { Home, Loader2, FileText, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, Trash2, AlertTriangle, Search, ArrowUpDown, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +61,8 @@ function SessionDetailDialog({ session, user, isOpen, onOpenChange }: { session:
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' } | null>({ key: 'invoiceId', direction: 'asc' });
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -147,6 +156,20 @@ function SessionDetailDialog({ session, user, isOpen, onOpenChange }: { session:
     return filtered;
   }, [items, searchTerm, sortConfig]);
 
+  const total = sortedAndFilteredItems.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * limit;
+    return sortedAndFilteredItems.slice(start, start + limit);
+  }, [sortedAndFilteredItems, page, limit]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, isOpen]);
+
+  const startRecord = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endRecord = Math.min(page * limit, total);
+
   const SortableHeader = ({ sortKey, children, className }: { sortKey: SortableKeys, children: React.ReactNode, className?: string }) => {
     const isSorted = sortConfig?.key === sortKey;
     return (
@@ -193,7 +216,7 @@ function SessionDetailDialog({ session, user, isOpen, onOpenChange }: { session:
                 <Download className="mr-2 h-4 w-4" /> Xuất Excel
             </Button>
         </div>
-        <ScrollArea className="h-[60vh] rounded-md border mt-4">
+        <ScrollArea className="h-[55vh] rounded-md border mt-4">
           <Table>
             <TableHeader className="sticky top-0 bg-muted z-10">
               <TableRow>
@@ -216,7 +239,7 @@ function SessionDetailDialog({ session, user, isOpen, onOpenChange }: { session:
                   </TableCell>
                 </TableRow>
               ) : sortedAndFilteredItems && sortedAndFilteredItems.length > 0 ? (
-                sortedAndFilteredItems.map(item => {
+                paginatedItems.map(item => {
                     const quantity = parseFloat(item.quantity) || 0;
                     const unitPrice = parseFloat(item.unitPrice) || 0;
                     const taxRate = parseFloat(item.taxRate) / 100 || 0;
@@ -248,6 +271,71 @@ function SessionDetailDialog({ session, user, isOpen, onOpenChange }: { session:
             </TableBody>
           </Table>
         </ScrollArea>
+
+        {/* Pagination Bar for Dialog */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span>Hiển thị</span>
+            <Select
+              value={String(limit)}
+              onValueChange={(val) => {
+                setLimit(Number(val));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-7 w-[64px] text-xs">
+                <SelectValue placeholder={limit} />
+              </SelectTrigger>
+              <SelectContent side="top">
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>dòng / trang</span>
+            <span>(Hiển thị {startRecord} - {endRecord} trên tổng số {total} mặt hàng)</span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+            >
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="px-2">Trang {page}/{totalPages}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+            >
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -286,6 +374,8 @@ export default function ImportHistory({ currentUser }: ImportHistoryProps) {
 
   const [selectedSession, setSelectedSession] = useState<ImportSession | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [sessionPage, setSessionPage] = useState(1);
+  const [sessionLimit, setSessionLimit] = useState(10);
   const { toast } = useToast();
   const [isDeleting, setIsDeleting] = useState<boolean | string>(false); // Can be boolean or sessionId string
 
@@ -412,6 +502,16 @@ export default function ImportHistory({ currentUser }: ImportHistoryProps) {
 
   const isAdminView = currentUser?.role === 'ADMIN';
 
+  const totalSessions = sessions.length;
+  const totalSessionPages = Math.max(1, Math.ceil(totalSessions / sessionLimit));
+  const paginatedSessions = useMemo(() => {
+    const start = (sessionPage - 1) * sessionLimit;
+    return sessions.slice(start, start + sessionLimit);
+  }, [sessions, sessionPage, sessionLimit]);
+
+  const startSessionRecord = totalSessions === 0 ? 0 : (sessionPage - 1) * sessionLimit + 1;
+  const endSessionRecord = Math.min(sessionPage * sessionLimit, totalSessions);
+
   return (
     <>
       <SessionDetailDialog session={selectedSession} user={currentUser} isOpen={isDetailOpen} onOpenChange={setIsDetailOpen} />
@@ -420,7 +520,7 @@ export default function ImportHistory({ currentUser }: ImportHistoryProps) {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle className="text-3xl font-bold tracking-tight text-primary">Lịch sử nhập hàng của {isAdminView && sessions.length > 0 ? currentUser.fullName : 'bạn'}</CardTitle>
-              <CardDescription>Xem lại các lần nhập hóa đơn từ file XML.</CardDescription>
+              <CardDescription>Xem lại các lần nhập hóa đơn từ file XML (Tổng cộng: {totalSessions} phiên nhập).</CardDescription>
             </div>
             <div className="flex items-center gap-2">
                 <AlertDialog>
@@ -453,7 +553,7 @@ export default function ImportHistory({ currentUser }: ImportHistoryProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[65vh] rounded-md border">
+          <ScrollArea className="h-[60vh] rounded-md border">
             {isLoadingSessions || isDeleting === true ? (
                  <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground p-8">
                     <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -461,7 +561,7 @@ export default function ImportHistory({ currentUser }: ImportHistoryProps) {
                 </div>
             ) : sessions && sessions.length > 0 ? (
                 <div className="p-4 space-y-4">
-                    {sessions.map(session => (
+                    {paginatedSessions.map(session => (
                         <div key={session.id} className="border rounded-lg p-4 flex items-center justify-between hover:bg-muted/50 transition-colors">
                             <div className='flex items-center gap-4'>
                                 {isDeleting === session.id ? <Loader2 className='h-8 w-8 animate-spin text-primary' /> : <FileText className='h-8 w-8 text-primary' />}
@@ -510,6 +610,81 @@ export default function ImportHistory({ currentUser }: ImportHistoryProps) {
                 </div>
             )}
           </ScrollArea>
+
+          {/* Pagination Bar for Sessions */}
+          {totalSessions > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span>Hiển thị</span>
+                <Select
+                  value={String(sessionLimit)}
+                  onValueChange={(val) => {
+                    setSessionLimit(Number(val));
+                    setSessionPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[72px]">
+                    <SelectValue placeholder={sessionLimit} />
+                  </SelectTrigger>
+                  <SelectContent side="top">
+                    <SelectItem value="5">5</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span>phiên / trang</span>
+                <span className="hidden sm:inline">
+                  (Hiển thị {startSessionRecord} - {endSessionRecord} trên tổng số {totalSessions} phiên)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setSessionPage(1)}
+                  disabled={sessionPage <= 1}
+                  title="Trang đầu"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setSessionPage(p => Math.max(1, p - 1))}
+                  disabled={sessionPage <= 1}
+                  title="Trang trước"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="px-2 text-xs">
+                  Trang {sessionPage}/{totalSessionPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setSessionPage(p => Math.min(totalSessionPages, p + 1))}
+                  disabled={sessionPage >= totalSessionPages}
+                  title="Trang tiếp"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setSessionPage(totalSessionPages)}
+                  disabled={sessionPage >= totalSessionPages}
+                  title="Trang cuối"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </>

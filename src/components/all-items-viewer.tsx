@@ -265,11 +265,6 @@ export default function AllItemsViewer({ currentUser }: AllItemsViewerProps) {
             <CardTitle className="text-3xl font-bold text-primary">Tất cả mặt hàng của {isAdminView ? currentUser.fullName : 'bạn'}</CardTitle>
             <CardDescription>Xem, tìm kiếm và lọc toàn bộ mặt hàng đã nhập (Tổng cộng: {total.toLocaleString('vi-VN')} mặt hàng).</CardDescription>
           </div>
-          {!isAdminView && (
-            <Link href="/" passHref>
-              <Button variant="outline"><Home className="mr-2 h-4 w-4" /> Trang chính</Button>
-            </Link>
-          )}
         </div>
       </CardHeader>
 

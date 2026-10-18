@@ -4,73 +4,80 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 262 30% 25%;
+    /* Nền xám xanh nhẹ thanh lịch chuẩn SaaS */
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 262 30% 25%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 262 30% 25%;
-    --primary: 262 52% 47%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Tông màu chủ đạo: Xanh Biển Công Nghệ (Royal / Ocean Blue #2563eb) */
+    --primary: 217 91% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 262 30% 25%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 262 20% 55%;
-    --accent: 231 98% 59%;
-    --accent-foreground: 0 0% 100%;
+
+    --secondary: 214 32% 94%;
+    --secondary-foreground: 222 47% 15%;
+    --muted: 214 32% 94%;
+    --muted-foreground: 215 16% 45%;
+
+    --accent: 214 90% 95%;
+    --accent-foreground: 217 91% 40%;
+
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 231 98% 59%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+
+    --border: 214 25% 88%;
+    --input: 214 25% 88%;
+    --ring: 217 91% 53%;
+
     --radius: 0.5rem;
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 262 30% 25%;
-    --sidebar-primary: 262 52% 47%;
+
+    /* Sidebar Xanh Navy Công nghệ */
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 5% 96%;
-    --sidebar-accent-foreground: 262 30% 25%;
-    --sidebar-border: 240 6% 90%;
-    --sidebar-ring: 231 98% 59%;
+    --sidebar-accent: 222 40% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 40% 18%;
+    --sidebar-ring: 217 91% 60%;
   }
+
   .dark {
-    --background: 262 10% 10%;
-    --foreground: 300 10% 95%;
-    --card: 262 10% 12%;
-    --card-foreground: 300 10% 95%;
-    --popover: 262 10% 10%;
-    --popover-foreground: 300 10% 95%;
-    --primary: 262 52% 57%;
-    --primary-foreground: 262 52% 10%;
-    --secondary: 262 10% 20%;
-    --secondary-foreground: 300 10% 95%;
-    --muted: 262 10% 20%;
-    --muted-foreground: 300 10% 60%;
-    --accent: 231 98% 69%;
-    --accent-foreground: 231 98% 10%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 222 47% 9%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 40% 18%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 222 40% 18%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 222 40% 20%;
+    --accent-foreground: 217 91% 65%;
+
+    --destructive: 0 62.8% 45%;
     --destructive-foreground: 0 0% 98%;
-    --border: 262 10% 20%;
-    --input: 262 10% 20%;
-    --ring: 231 98% 69%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 262 10% 12%;
-    --sidebar-foreground: 300 10% 95%;
-    --sidebar-primary: 262 52% 57%;
-    --sidebar-primary-foreground: 262 52% 10%;
-    --sidebar-accent: 262 10% 20%;
-    --sidebar-accent-foreground: 300 10% 95%;
-    --sidebar-border: 262 10% 20%;
-    --sidebar-ring: 231 98% 69%;
+
+    --border: 222 40% 20%;
+    --input: 222 40% 20%;
+    --ring: 217 91% 60%;
+
+    --sidebar-background: 222 50% 8%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 40% 16%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 222 40% 16%;
+    --sidebar-ring: 217 91% 60%;
   }
 }
 
@@ -80,5 +87,6 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }

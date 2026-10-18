@@ -10,9 +10,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['var(--font-inter)', 'sans-serif'],
-        headline: ['var(--font-inter)', 'sans-serif'],
-        code: ['var(--font-roboto-mono)', 'monospace'],
+        sans: ['var(--font-be-vietnam-pro)', 'sans-serif'],
+        body: ['var(--font-be-vietnam-pro)', 'sans-serif'],
+        headline: ['var(--font-be-vietnam-pro)', 'sans-serif'],
+        mono: ['var(--font-be-vietnam-pro)', 'sans-serif'],
       },
       colors: {
         background: 'hsl(var(--background))',

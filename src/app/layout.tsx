@@ -1,25 +1,20 @@
-import type {Metadata} from 'next';
-import { Toaster } from "@/components/ui/toaster"
+import type { Metadata } from 'next';
+import { Toaster } from "@/components/ui/toaster";
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase';
-import { Inter, Roboto_Mono } from 'next/font/google';
+import { Be_Vietnam_Pro } from 'next/font/google';
+import AppNavigation from '@/components/layout/app-navigation';
 
-const inter = Inter({
-  subsets: ['latin'],
+const beVietnamPro = Be_Vietnam_Pro({
+  weight: ['400', '500', '600', '700'],
+  subsets: ['latin', 'vietnamese'],
   display: 'swap',
-  variable: '--font-inter',
+  variable: '--font-be-vietnam-pro',
 });
-
-const roboto_mono = Roboto_Mono({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-roboto-mono',
-});
-
 
 export const metadata: Metadata = {
-  title: 'Xu ly XML',
-  description: 'Phân tích cú pháp hóa đơn XML và xuất ra Excel.',
+  title: 'Thuốc Số XML - Hệ thống Xử lý Hóa đơn XML & Dược phẩm',
+  description: 'Phân tích cú pháp hóa đơn XML, khớp ánh xạ dược phẩm thông minh và xuất dữ liệu liên thông.',
 };
 
 export default function RootLayout({
@@ -28,15 +23,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${roboto_mono.variable}`}>
+    <html lang="vi" suppressHydrationWarning className={beVietnamPro.variable}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
       </head>
-      <body className="min-h-screen flex flex-col font-body antialiased">
+      <body className="min-h-screen flex flex-col font-sans bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary">
         <FirebaseClientProvider>
-          {children}
+          <AppNavigation />
+          <div className="flex-1 w-full">
+            {children}
+          </div>
         </FirebaseClientProvider>
         <Toaster />
       </body>

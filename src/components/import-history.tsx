@@ -544,11 +544,6 @@ export default function ImportHistory({ currentUser }: ImportHistoryProps) {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                {!isAdminView && (
-                    <Link href="/" passHref>
-                        <Button variant="outline"><Home className="mr-2 h-4 w-4" /> Về trang chính</Button>
-                    </Link>
-                )}
             </div>
           </div>
         </CardHeader>

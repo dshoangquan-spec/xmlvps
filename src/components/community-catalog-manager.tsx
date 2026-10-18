@@ -10,7 +10,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Home, Library, Search, Trash2, AlertTriangle, ArrowUpDown, Pencil, Check, X, Link as LinkIcon } from 'lucide-react';
+import { Loader2, Home, Library, Search, Trash2, AlertTriangle, ArrowUpDown, Pencil, Check, X, Link as LinkIcon, Download } from 'lucide-react';
+import { exportCommunityMappingCatalogToExcel } from '@/lib/excel-exporter';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -63,6 +64,12 @@ export default function CommunityCatalogManager({ currentUser }: CommunityCatalo
     suppliersData?.forEach(s => map.set(s.id, s.supplierName));
     return map;
   }, [suppliersData]);
+
+  const masterCatalogMap = useMemo(() => {
+    const map = new Map<string, MasterCatalogItem>();
+    masterCatalogData?.forEach(item => map.set(item.id, item));
+    return map;
+  }, [masterCatalogData]);
 
   const sortedAndFilteredMappings = useMemo(() => {
     if (!communityMappings) return [];
@@ -167,6 +174,23 @@ export default function CommunityCatalogManager({ currentUser }: CommunityCatalo
     }
   };
 
+  const handleExport = () => {
+    if (!sortedAndFilteredMappings || sortedAndFilteredMappings.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Không có dữ liệu",
+        description: "Không có quy tắc ánh xạ nào để xuất.",
+      });
+      return;
+    }
+
+    exportCommunityMappingCatalogToExcel(sortedAndFilteredMappings, suppliersMap, masterCatalogMap);
+    toast({
+      title: "Đang tải xuống tệp Excel...",
+      description: `Đã xuất ${sortedAndFilteredMappings.length} quy tắc ánh xạ cộng đồng.`,
+    });
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -189,8 +213,8 @@ export default function CommunityCatalogManager({ currentUser }: CommunityCatalo
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-grow">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+          <div className="relative flex-grow w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder={`Tìm kiếm trong ${communityMappings?.length ?? 0} quy tắc...`}
@@ -199,6 +223,14 @@ export default function CommunityCatalogManager({ currentUser }: CommunityCatalo
               className="pl-10"
             />
           </div>
+          <Button
+            onClick={handleExport}
+            variant="outline"
+            className="w-full sm:w-auto shrink-0"
+            disabled={isLoadingMappings || !communityMappings || communityMappings.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" /> Xuất ra Excel
+          </Button>
         </div>
         <div className="h-[65vh] overflow-auto rounded-md border">
           <Table>

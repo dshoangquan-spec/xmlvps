@@ -1,0 +1,241 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String            @id @default(cuid())
+  username         String            @unique
+  password         String
+  fullName         String            @map("full_name")
+  role             String            @default("USER")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  suppliers        Supplier[]
+  mappings         Mapping[]
+  pharmacyAccounts PharmacyAccount[]
+  taxReports       TaxReport[]
+  importSessions   ImportSession[]
+  invoiceItems     InvoiceItem[]
+
+  @@map("users")
+}
+
+model Supplier {
+  id           String
+  userId       String @map("user_id")
+  supplierCode String @map("supplier_code")
+  supplierName String @map("supplier_name")
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@index([userId])
+  @@map("suppliers")
+}
+
+model MasterCatalogItem {
+  id                 String  @id
+  productName        String  @map("product_name")
+  activeIngredient   String? @default("") @map("active_ingredient")
+  concentration      String? @default("")
+  registrationNumber String? @default("") @map("registration_number")
+  packaging          String? @default("")
+  unit               String
+  smallestUnit       String? @map("smallest_unit")
+  conversionRate     Float?  @default(1) @map("conversion_rate")
+
+  @@index([productName])
+  @@map("master_catalog")
+}
+
+model Mapping {
+  id              String
+  userId          String  @map("user_id")
+  originalCode    String  @map("original_code")
+  supplierTaxCode String? @map("supplier_tax_code")
+  newCode         String  @map("new_code")
+  originalName    String  @map("original_name")
+  newName         String  @map("new_name")
+  originalUnit    String? @map("original_unit")
+  newUnit         String  @map("new_unit")
+  conversionRate  Float?  @default(1) @map("conversion_rate")
+  masterCatalogId String? @map("master_catalog_id")
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@index([userId])
+  @@index([userId, originalCode])
+  @@map("mappings")
+}
+
+model CommunityMapping {
+  id              String  @id
+  originalCode    String  @map("original_code")
+  supplierTaxCode String? @map("supplier_tax_code")
+  newCode         String  @map("new_code")
+  newName         String  @map("new_name")
+  newUnit         String  @map("new_unit")
+  conversionRate  Float?  @default(1) @map("conversion_rate")
+  updateCount     Int?    @default(1) @map("update_count")
+  masterCatalogId String? @map("master_catalog_id")
+
+  @@index([originalCode])
+  @@index([supplierTaxCode])
+  @@map("community_mappings")
+}
+
+model PharmacyAccount {
+  id                  String      @id @default(cuid())
+  userId              String      @map("user_id")
+  pharmacyName        String      @map("pharmacy_name")
+  representative      String?
+  usageStartDate      String?     @map("usage_start_date")
+  softwareFee         Float?      @default(0) @map("software_fee")
+  softwareFeeDate     String?     @map("software_fee_date")
+  pmName              String?     @map("pm_name")
+  pmUser              String?     @map("pm_user")
+  pmPass              String?     @map("pm_pass")
+  invoiceProviderName String?     @map("invoice_provider_name")
+  invoiceUser         String?     @map("invoice_user")
+  invoicePass         String?     @map("invoice_pass")
+  invoiceLink         String?     @map("invoice_link")
+  taxUser             String?     @map("tax_user")
+  taxPass             String?     @map("tax_pass")
+  electronicTaxUser   String?     @map("electronic_tax_user")
+  electronicTaxPass   String?     @map("electronic_tax_pass")
+  electronicTaxLink   String?     @map("electronic_tax_link")
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feeRecords          FeeRecord[]
+  taxReports          TaxReport[]
+
+  @@index([userId])
+  @@map("pharmacy_accounts")
+}
+
+model FeeRecord {
+  id                String          @id @default(cuid())
+  pharmacyAccountId String          @map("pharmacy_account_id")
+  month             String
+  taxReportFee      Float?          @default(0) @map("tax_report_fee")
+  invoiceImportFee  Float?          @default(0) @map("invoice_import_fee")
+  invoiceExportFee  Float?          @default(0) @map("invoice_export_fee")
+  totalFee          Float?          @default(0) @map("total_fee")
+  isPaid            Boolean?        @default(false) @map("is_paid")
+  pharmacyAccount   PharmacyAccount @relation(fields: [pharmacyAccountId], references: [id], onDelete: Cascade)
+
+  @@index([pharmacyAccountId])
+  @@map("fee_records")
+}
+
+model TaxReport {
+  id                String          @id @default(cuid())
+  pharmacyAccountId String          @map("pharmacy_account_id")
+  userId            String          @map("user_id")
+  year              Int
+  quarter           Int
+  openingBalance    Float?          @default(0) @map("opening_balance")
+  purchaseValue     Float?          @default(0) @map("purchase_value")
+  revenue           Float?          @default(0)
+  costOfGoods       Float?          @default(0) @map("cost_of_goods")
+  closingBalance    Float?          @default(0) @map("closing_balance")
+  vatPayable        Float?          @default(0) @map("vat_payable")
+  pitPayable        Float?          @default(0) @map("pit_payable")
+  status            String?         @default("DRAFT")
+  createdAt         DateTime?       @default(now()) @map("created_at")
+  updatedAt         DateTime?       @default(now()) @updatedAt @map("updated_at")
+  pharmacyAccount   PharmacyAccount @relation(fields: [pharmacyAccountId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([pharmacyAccountId])
+  @@map("tax_reports")
+}
+
+model ImportSession {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  importDate   DateTime? @default(now()) @map("import_date")
+  fileNames    Json?     @default("[]") @map("file_names")
+  invoiceCount Int?      @default(0) @map("invoice_count")
+  itemCount    Int?      @default(0) @map("item_count")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+
+  @@index([userId])
+  @@map("import_sessions")
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  invoiceNumber    String        @map("invoice_number")
+  uniqueIdentifier String?       @map("unique_identifier")
+  importSessionId  String        @map("import_session_id")
+  provider         String?       @default("")
+  invoiceDate      String        @map("invoice_date")
+  sellerName       String        @map("seller_name")
+  sellerTaxCode    String        @map("seller_tax_code")
+  sellerAddress    String?       @default("") @map("seller_address")
+  buyerName        String?       @default("") @map("buyer_name")
+  fileName         String?       @default("") @map("file_name")
+  portalLink       String?       @map("portal_link")
+  accessCode       String?       @map("access_code")
+  importSession    ImportSession @relation(fields: [importSessionId], references: [id], onDelete: Cascade)
+  items            InvoiceItem[]
+
+  @@index([importSessionId])
+  @@index([uniqueIdentifier])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  invoiceId      String   @map("invoice_id")
+  invoiceDate    String   @map("invoice_date")
+  invoiceDateISO String   @map("invoice_date_iso")
+  sellerName     String   @map("seller_name")
+  lineNumber     String?  @default("") @map("line_number")
+  itemCode       String   @map("item_code")
+  itemName       String   @map("item_name")
+  manufacturer   String?
+  unit           String
+  quantity       String
+  unitPrice      String   @map("unit_price")
+  totalAmount    String   @map("total_amount")
+  taxRate        String   @map("tax_rate")
+  lotNumber      String?  @map("lot_number")
+  expirationDate String?  @map("expiration_date")
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([invoiceId])
+  @@index([invoiceDateISO])
+  @@map("invoice_items")
+}
+
+model Version {
+  id            String    @id @default(cuid())
+  versionNumber String    @map("version_number")
+  releaseDate   DateTime? @default(now()) @map("release_date")
+  published     Boolean?  @default(false)
+  changes       Change[]
+
+  @@map("versions")
+}
+
+model Change {
+  id        String   @id @default(cuid())
+  versionId String   @map("version_id")
+  type      String
+  text      String
+  adminOnly Boolean? @default(false) @map("admin_only")
+  order     Int?     @default(0)
+  version   Version  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+  @@map("changes")
+}

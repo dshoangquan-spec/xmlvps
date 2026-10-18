@@ -3,7 +3,7 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import type { InvoiceItem, ExportItem, ViettelExportItem } from '@/types/invoice';
-import type { Supplier, MasterCatalogItem, Mapping, InvoiceItem as FirebaseInvoiceItem } from '@/types/firebase';
+import type { Supplier, MasterCatalogItem, Mapping, CommunityMapping, InvoiceItem as FirebaseInvoiceItem } from '@/types/firebase';
 import { format, parse, isValid } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import type { InvoiceSummaryData } from '@/components/invoice-summary';
@@ -388,6 +388,82 @@ export function exportMappingCatalogToExcel(data: Mapping[]) {
   saveAs(blob, filename);
 }
 
+export function exportCommunityMappingCatalogToExcel(
+  data: CommunityMapping[],
+  suppliersMap?: Map<string, string>,
+  masterCatalogMap?: Map<string, MasterCatalogItem>
+) {
+  if (data.length === 0) return;
+  const headers = [
+    "Mã số thuế NCC",
+    "Tên nhà cung cấp",
+    "Mã hàng gốc (XML)",
+    "Tên gợi ý",
+    "Mã gợi ý (Nội bộ)",
+    "ĐVT mới",
+    "Hệ số QĐ",
+    "Mã liên kết (danh mục chung)",
+    "Tên sản phẩm dùng chung",
+    "Số lượt xác nhận"
+  ];
+
+  const dataToExport = data.map(item => {
+    const supplierTaxCode = item.supplierTaxCode || '';
+    const supplierName = supplierTaxCode ? (suppliersMap?.get(supplierTaxCode) || `MST: ${supplierTaxCode}`) : 'Chung';
+    const masterItem = item.masterCatalogId && masterCatalogMap ? masterCatalogMap.get(item.masterCatalogId) : null;
+
+    return {
+      "Mã số thuế NCC": supplierTaxCode,
+      "Tên nhà cung cấp": supplierName,
+      "Mã hàng gốc (XML)": item.originalCode || '',
+      "Tên gợi ý": item.newName || '',
+      "Mã gợi ý (Nội bộ)": item.newCode || '',
+      "ĐVT mới": item.newUnit || '',
+      "Hệ số QĐ": item.conversionRate ?? 1,
+      "Mã liên kết (danh mục chung)": item.masterCatalogId || '',
+      "Tên sản phẩm dùng chung": masterItem ? masterItem.productName : '',
+      "Số lượt xác nhận": item.updateCount ?? 0,
+    };
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(dataToExport, { header: headers });
+
+  // Format code columns as string to preserve leading zeros
+  const textColumns = ['A', 'C', 'E', 'H'];
+  const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+  for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+    for (const colLetter of textColumns) {
+      const cellAddress = `${colLetter}${R + 1}`;
+      if (worksheet[cellAddress] && worksheet[cellAddress].v != null) {
+        worksheet[cellAddress].t = 's';
+        worksheet[cellAddress].v = String(worksheet[cellAddress].v);
+      }
+    }
+  }
+
+  worksheet['!cols'] = [
+    { wch: 18 }, // Mã số thuế NCC
+    { wch: 30 }, // Tên nhà cung cấp
+    { wch: 20 }, // Mã hàng gốc (XML)
+    { wch: 35 }, // Tên gợi ý
+    { wch: 20 }, // Mã gợi ý (Nội bộ)
+    { wch: 12 }, // ĐVT mới
+    { wch: 12 }, // Hệ số QĐ
+    { wch: 25 }, // Mã liên kết (danh mục chung)
+    { wch: 35 }, // Tên sản phẩm dùng chung
+    { wch: 18 }, // Số lượt xác nhận
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'DanhMucAnhXaCongDong');
+
+  const timestamp = new Date().strftime("%Y%m%d_%H%M%S");
+  const filename = `DanhMucAnhXaCongDong_${timestamp}.xlsx`;
+
+  const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8" });
+  saveAs(blob, filename);
+}
 
 export function exportSupplierCatalogToExcel(data: Supplier[]) {
   if (data.length === 0) return;
